@@ -870,20 +870,24 @@ if __name__ == "__main__":
     # hosts with egress UDP (e.g. Cloud Run) and avoids aioice's TURN client.
     TURN_SERVER_SIDE = os.getenv("TURN_SERVER_SIDE", "1") not in ("0", "false")
 
-    if TURN_URLS and TURN_SERVER_SIDE:
+    if TURN_URLS:
         # The dev runner builds its SmallWebRTCRequestHandler without exposing
-        # an ice_servers hook, so inject them via the constructor.
+        # an ice_servers hook, so inject them via the constructor. STUN is
+        # always included: without it the bot only advertises its container IP,
+        # and the client's TURN relay drops packets from the bot's (undisclosed)
+        # public NAT address, so ICE never completes.
         from pipecat.transports.smallwebrtc import request_handler as _swrtc
         from pipecat.transports.smallwebrtc.connection import IceServer
 
-        _server_ice_servers = [
-            IceServer(urls=STUN_URL),
-            IceServer(
-                urls=TURN_URLS,
-                username=os.getenv("TURN_USERNAME", ""),
-                credential=os.getenv("TURN_PASSWORD", ""),
-            ),
-        ]
+        _server_ice_servers = [IceServer(urls=STUN_URL)]
+        if TURN_SERVER_SIDE:
+            _server_ice_servers.append(
+                IceServer(
+                    urls=TURN_URLS,
+                    username=os.getenv("TURN_USERNAME", ""),
+                    credential=os.getenv("TURN_PASSWORD", ""),
+                )
+            )
 
         _orig_handler_init = _swrtc.SmallWebRTCRequestHandler.__init__
 
