@@ -1265,6 +1265,38 @@
   // Import without version pins to guarantee compatibility on esm.sh
   import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js";
   import { SmallWebRTCTransport } from "https://esm.sh/@pipecat-ai/small-webrtc-transport";
+  import { DailyTransport } from "https://esm.sh/@pipecat-ai/daily-transport";
+
+  // Voice transport is chosen by the server (/api/config): "daily" when
+  // DAILY_API_KEY is configured (media flows via Daily's cloud — works behind
+  // hosts without inbound UDP like Cloud Run), else SmallWebRTC peer-to-peer.
+  function makeVoiceTransport() {
+    if (CONFIG.voice_transport === 'daily') return new DailyTransport();
+    return new SmallWebRTCTransport({
+      iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+  }
+
+  async function startVoiceBot(client, configData) {
+    if (CONFIG.voice_transport === 'daily') {
+      // The runner's /start returns {dailyRoom, dailyToken}, while
+      // DailyTransport.connect() expects {url, token} — map explicitly.
+      const res = await fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transport: 'daily', createDailyRoom: true, body: configData })
+      });
+      if (!res.ok) throw new Error(`/start failed (${res.status}): ${await res.text()}`);
+      const data = await res.json();
+      await client.connect({ url: data.dailyRoom, token: data.dailyToken });
+    } else {
+      // Nest the payload inside "body" as expected by FastAPI runner's /start route
+      await client.startBotAndConnect({
+        endpoint: "/start",
+        requestData: { body: configData }
+      });
+    }
+  }
 
   // ── DOM refs ───────────────────────────────────────
   const selScenario = document.getElementById('selScenario');
@@ -1991,9 +2023,7 @@
     renderMetrics();
 
     try {
-      const transport = new SmallWebRTCTransport({
-        iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
-      });
+      const transport = makeVoiceTransport();
 
       client = new PipecatClient({
         transport,
@@ -2131,13 +2161,7 @@
         }
       });
 
-      // Nest the payload inside "body" as expected by FastAPI runner's /start route
-      await client.startBotAndConnect({
-        endpoint: "/start",
-        requestData: {
-          body: configData
-        }
-      });
+      await startVoiceBot(client, configData);
 
     } catch (err) {
       console.error("Connection failed:", err);
@@ -2696,9 +2720,7 @@
 
         const self = this;
         try {
-          const transport = new SmallWebRTCTransport({
-            iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
-          });
+          const transport = makeVoiceTransport();
           this.client = new PipecatClient({
             transport,
             enableMic: true,
@@ -2784,10 +2806,7 @@
             }
           });
 
-          await this.client.startBotAndConnect({
-            endpoint: "/start",
-            requestData: { body: configData }
-          });
+          await startVoiceBot(this.client, configData);
         } catch (err) {
           console.error(`Pane ${name} connection failed:`, err);
           addEvent('error', `Pane ${name} connection failed: ${err.message}`);

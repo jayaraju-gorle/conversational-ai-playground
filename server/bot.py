@@ -971,6 +971,7 @@ if __name__ == "__main__":
             "usd_inr": usd_inr,
             "fx_source": fx_source,
             "ice_servers": client_ice_servers(),
+            "voice_transport": "daily" if os.getenv("DAILY_API_KEY") else "webrtc",
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────
