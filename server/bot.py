@@ -870,6 +870,20 @@ if __name__ == "__main__":
     # hosts with egress UDP (e.g. Cloud Run) and avoids aioice's TURN client.
     TURN_SERVER_SIDE = os.getenv("TURN_SERVER_SIDE", "1") not in ("0", "false")
 
+    # aiortc only uses the first TURN URL, and its UDP TURN transactions have
+    # proven flaky against some providers; TURN_SERVER_URLS lets the bot use a
+    # different (e.g. TCP-only) URL than the browser.
+    TURN_SERVER_URLS = [
+        u.strip() for u in os.getenv("TURN_SERVER_URLS", "").split(",") if u.strip()
+    ] or TURN_URLS
+
+    if os.getenv("ICE_DEBUG"):
+        import logging as _stdlog
+
+        _stdlog.basicConfig(level=_stdlog.INFO)
+        for _name in ("aioice", "aiortc"):
+            _stdlog.getLogger(_name).setLevel(_stdlog.DEBUG)
+
     if TURN_URLS:
         # The dev runner builds its SmallWebRTCRequestHandler without exposing
         # an ice_servers hook, so inject them via the constructor. STUN is
@@ -883,7 +897,7 @@ if __name__ == "__main__":
         if TURN_SERVER_SIDE:
             _server_ice_servers.append(
                 IceServer(
-                    urls=TURN_URLS,
+                    urls=TURN_SERVER_URLS,
                     username=os.getenv("TURN_USERNAME", ""),
                     credential=os.getenv("TURN_PASSWORD", ""),
                 )
