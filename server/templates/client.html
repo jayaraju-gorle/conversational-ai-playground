@@ -1992,7 +1992,7 @@
 
     try {
       const transport = new SmallWebRTCTransport({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
       });
 
       client = new PipecatClient({
@@ -2697,7 +2697,7 @@
         const self = this;
         try {
           const transport = new SmallWebRTCTransport({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+            iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
           });
           this.client = new PipecatClient({
             transport,

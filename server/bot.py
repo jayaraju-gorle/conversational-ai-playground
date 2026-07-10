@@ -844,6 +844,50 @@ if __name__ == "__main__":
     from pipecat.runner.run import app, main
     from pydantic import BaseModel
 
+    # ── TURN relay for WebRTC on hosts without inbound UDP (e.g. Cloud Run) ──
+    # TURN_URLS is comma-separated, e.g.
+    #   "turn:a.relay.metered.ca:443,turn:a.relay.metered.ca:443?transport=tcp"
+    # Credentials go in TURN_USERNAME / TURN_PASSWORD. Without TURN_URLS,
+    # behavior is unchanged (STUN only — fine for hosts with direct UDP).
+    STUN_URL = "stun:stun.l.google.com:19302"
+    TURN_URLS = [u.strip() for u in os.getenv("TURN_URLS", "").split(",") if u.strip()]
+
+    def client_ice_servers() -> list[dict]:
+        """ICE server list for the browser client (served via /api/config)."""
+        servers: list[dict] = [{"urls": STUN_URL}]
+        if TURN_URLS:
+            servers.append(
+                {
+                    "urls": TURN_URLS,
+                    "username": os.getenv("TURN_USERNAME", ""),
+                    "credential": os.getenv("TURN_PASSWORD", ""),
+                }
+            )
+        return servers
+
+    if TURN_URLS:
+        # The dev runner builds its SmallWebRTCRequestHandler without exposing
+        # an ice_servers hook, so inject them via the constructor.
+        from pipecat.transports.smallwebrtc import request_handler as _swrtc
+        from pipecat.transports.smallwebrtc.connection import IceServer
+
+        _server_ice_servers = [
+            IceServer(urls=STUN_URL),
+            IceServer(
+                urls=TURN_URLS,
+                username=os.getenv("TURN_USERNAME", ""),
+                credential=os.getenv("TURN_PASSWORD", ""),
+            ),
+        ]
+
+        _orig_handler_init = _swrtc.SmallWebRTCRequestHandler.__init__
+
+        def _handler_init_with_turn(self, *args, **kwargs):
+            kwargs.setdefault("ice_servers", _server_ice_servers)
+            _orig_handler_init(self, *args, **kwargs)
+
+        _swrtc.SmallWebRTCRequestHandler.__init__ = _handler_init_with_turn
+
     # Override root to serve our custom playground page
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root_playground():
@@ -903,6 +947,7 @@ if __name__ == "__main__":
             "pricing": PRICING,
             "usd_inr": usd_inr,
             "fx_source": fx_source,
+            "ice_servers": client_ice_servers(),
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────
