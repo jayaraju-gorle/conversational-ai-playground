@@ -1271,7 +1271,12 @@
   // DAILY_API_KEY is configured (media flows via Daily's cloud — works behind
   // hosts without inbound UDP like Cloud Run), else SmallWebRTC peer-to-peer.
   function makeVoiceTransport() {
-    if (CONFIG.voice_transport === 'daily') return new DailyTransport();
+    const label = document.getElementById('cfgTransport');
+    if (CONFIG.voice_transport === 'daily') {
+      if (label) label.textContent = 'Daily';
+      return new DailyTransport();
+    }
+    if (label) label.textContent = 'Small WebRTC';
     return new SmallWebRTCTransport({
       iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
     });
