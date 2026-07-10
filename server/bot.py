@@ -865,7 +865,12 @@ if __name__ == "__main__":
             )
         return servers
 
-    if TURN_URLS:
+    # TURN_SERVER_SIDE=0 keeps TURN for the browser only: the bot then pairs its
+    # own outbound UDP socket with the client's relay candidate, which works on
+    # hosts with egress UDP (e.g. Cloud Run) and avoids aioice's TURN client.
+    TURN_SERVER_SIDE = os.getenv("TURN_SERVER_SIDE", "1") not in ("0", "false")
+
+    if TURN_URLS and TURN_SERVER_SIDE:
         # The dev runner builds its SmallWebRTCRequestHandler without exposing
         # an ice_servers hook, so inject them via the constructor.
         from pipecat.transports.smallwebrtc import request_handler as _swrtc
