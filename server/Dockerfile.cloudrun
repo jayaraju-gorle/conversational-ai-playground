@@ -1,0 +1,24 @@
+# Cloud Run image. The original Dockerfile targets Pipecat Cloud (dailyco/pipecat-base);
+# this one runs the pipecat dev runner's FastAPI server directly.
+FROM python:3.12-slim
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --no-dev
+
+COPY bot.py ./
+COPY templates ./templates
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Cloud Run injects PORT; the runner does not read it, so pass it explicitly.
+CMD exec python bot.py --host 0.0.0.0 --port ${PORT:-7860}

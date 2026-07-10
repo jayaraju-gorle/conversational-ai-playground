@@ -1,0 +1,30 @@
+# Builds the Cloud Run image from server/Dockerfile.cloudrun and pushes it to
+# Artifact Registry. Used by both the first manual deploy and the GitHub Actions
+# pipeline (.github/workflows/deploy.yml).
+substitutions:
+  _REGION: asia-south1
+  _REPO: cloud-run-apps
+  _SERVICE: conversational-ai-playground
+  _TAG: latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - server/Dockerfile.cloudrun
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_TAG}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
+      - server
+    env:
+      - DOCKER_BUILDKIT=1
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

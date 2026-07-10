@@ -1,0 +1,3024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conversational AI Playground</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM9 11H7V9h2v2zm4 0h-2V9h2v2zm4 0h-2V9h2v2z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ── Design Tokens ────────────────────────────────── */
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface-2:   #22262f;
+      --surface-3:   #2a2e3a;
+      --border:      rgba(255,255,255,0.07);
+      --border-hover:rgba(255,255,255,0.14);
+      --text:        #e8eaed;
+      --text-2:      #9aa0ad;
+      --text-3:      #636a78;
+      --primary:     #6366f1;
+      --primary-h:   #818cf8;
+      --primary-bg:  rgba(99,102,241,0.08);
+      --primary-glow:rgba(99,102,241,0.25);
+      --green:       #22c55e;
+      --green-bg:    rgba(34,197,94,0.1);
+      --red:         #ef4444;
+      --red-bg:      rgba(239,68,68,0.1);
+      --amber:       #f59e0b;
+      --cyan:        #06b6d4;
+      --radius:      10px;
+      --radius-lg:   14px;
+      --transition:  180ms ease;
+    }
+
+    /* ── Reset ────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* ── Shell Layout ─────────────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      height: 100vh;
+    }
+
+    /* ── Top Toolbar (row 1: brand, mode, currency, connect) ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: nowrap;
+      z-index: 100;
+    }
+
+    /* ── Config bar (row 2: solo-mode selectors, one stable row) ── */
+    .config-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.45rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      white-space: nowrap;
+      z-index: 90;
+    }
+    .config-bar::-webkit-scrollbar { height: 4px; }
+    .config-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+    /* Fixed widths so the header never reflows when options load */
+    #selScenario { width: 200px; }
+    #selLLM      { width: 170px; }
+    #selSTT      { width: 165px; }
+    #selTTS      { width: 165px; }
+    #selVoice    { width: 120px; }
+    #selLanguage { width: 195px; }
+
+    .toolbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-right: 0.75rem;
+      padding-right: 0.75rem;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .toolbar-brand svg {
+      width: 20px;
+      height: 20px;
+      color: var(--text-2);
+    }
+
+    .toolbar-brand span {
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: -0.3px;
+      color: var(--text);
+    }
+
+    /* Dropdown Pill Selectors */
+    .selector-group {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .selector-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-3);
+      white-space: nowrap;
+    }
+
+    .selector-pill {
+      position: relative;
+    }
+
+    .selector-pill select {
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.4rem 2rem 0.4rem 0.75rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color var(--transition), background var(--transition);
+      white-space: nowrap;
+      min-width: 0;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .selector-pill select:hover {
+      border-color: var(--border-hover);
+      background: var(--surface-3);
+    }
+
+    .selector-pill select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-bg);
+    }
+
+    .selector-pill::after {
+      content: '';
+      position: absolute;
+      right: 0.6rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-3);
+      pointer-events: none;
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      margin: 0 0.25rem;
+    }
+
+    .toolbar-spacer { flex: 1; }
+
+    /* Pill toggle (currency, view mode) */
+    .pill-toggle {
+      display: flex;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .pill-toggle button {
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-3);
+      background: none;
+      border: none;
+      padding: 0.35rem 0.75rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .pill-toggle button.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* Connect Button */
+    .btn-connect {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 1.4rem;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      white-space: nowrap;
+    }
+    .btn-connect.sm {
+      font-size: 0.75rem;
+      padding: 0.35rem 0.9rem;
+    }
+
+    .btn-connect.idle {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 2px 12px var(--primary-glow);
+    }
+    .btn-connect.idle:hover {
+      background: var(--primary-h);
+      box-shadow: 0 4px 20px var(--primary-glow);
+      transform: translateY(-1px);
+    }
+
+    .btn-connect.connected {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,0.2);
+    }
+    .btn-connect.connected:hover {
+      background: rgba(239,68,68,0.15);
+    }
+
+    .btn-connect.connecting {
+      background: var(--surface-3);
+      color: var(--text-2);
+      cursor: wait;
+    }
+
+    .btn-connect .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+    .btn-connect.idle .dot { background: #fff; }
+    .btn-connect.connected .dot {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: blink 2s infinite;
+    }
+    .btn-connect.connecting .dot {
+      background: var(--amber);
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Mic mute toggle (visible while connected) */
+    .btn-mic {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border: 1px solid var(--surface-3);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      white-space: nowrap;
+      background: var(--surface-2);
+      color: var(--text-2);
+    }
+    .btn-mic.visible { display: flex; }
+    .btn-mic:hover { background: var(--surface-3); }
+    .btn-mic.muted {
+      background: var(--red-bg);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.35);
+    }
+    .btn-mic svg { width: 14px; height: 14px; }
+
+    /* Toast notifications (transient feedback for actions/errors) */
+    #toasts {
+      position: fixed;
+      bottom: 84px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 1000;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--border-hover);
+      border-radius: 10px;
+      padding: 0.55rem 1rem;
+      font-size: 0.82rem;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 200ms ease, transform 200ms ease;
+      max-width: 520px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error {
+      background: var(--red-bg);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.35);
+    }
+
+    /* Typing indicator (Test LLM: reply pending) */
+    .typing-dots { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+    .typing-dots i {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-3);
+      animation: typing-bounce 1.2s infinite ease-in-out;
+    }
+    .typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+    .typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes typing-bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    .btn-ghost {
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-2);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+    .btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+    .conv-input .btn-ghost, .split-input .btn-ghost { flex-shrink: 0; }
+
+    /* ── Main Content (Solo) ──────────────────────────── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      overflow: hidden;
+    }
+
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+    }
+
+    /* ── Conversation Panel ───────────────────────────── */
+    .conversation {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .conv-tabs {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .tab-buttons {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .tab-action {
+      font-size: 0.72rem;
+      padding: 0.28rem 0.6rem;
+      margin-left: 0.5rem;
+    }
+
+    .conv-tab {
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-3);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: color var(--transition), border-color var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .conv-tab:hover { color: var(--text-2); }
+    .conv-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--primary);
+    }
+
+    /* Metrics Bar */
+    .metrics-bar {
+      display: flex;
+      gap: 1.25rem;
+      font-size: 0.8rem;
+      color: var(--text-3);
+      align-items: center;
+    }
+
+    .metric-item {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+      position: relative;
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      transition: background var(--transition);
+      user-select: none;
+    }
+    .metric-item:hover {
+      background: var(--surface-2);
+      color: var(--text-2);
+    }
+    .metric-item .m-val {
+      font-weight: 600;
+      color: var(--text-2);
+    }
+    .metric-item:hover .m-val {
+      color: var(--text);
+    }
+
+    /* Metric Tooltip style */
+    .metric-tooltip {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      width: 240px;
+      background: #141722;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      z-index: 200;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      margin-top: 0.5rem;
+      animation: tooltipIn 0.15s ease forwards;
+    }
+    @keyframes tooltipIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .tooltip-trigger:hover .metric-tooltip {
+      display: block;
+    }
+    .tooltip-title {
+      font-size: 0.7rem;
+      color: var(--text-3);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.25rem;
+    }
+    .tooltip-val {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .tooltip-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0.5rem 0;
+    }
+    .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-2);
+      margin: 0.2rem 0;
+      gap: 0.5rem;
+    }
+    .tooltip-row span:last-child {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .tooltip-note {
+      font-size: 0.68rem;
+      color: var(--text-3);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .conv-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      scroll-behavior: smooth;
+    }
+
+    /* Custom scrollbar */
+    .conv-messages::-webkit-scrollbar, .pane-msgs::-webkit-scrollbar { width: 5px; }
+    .conv-messages::-webkit-scrollbar-track, .pane-msgs::-webkit-scrollbar-track { background: transparent; }
+    .conv-messages::-webkit-scrollbar-thumb, .pane-msgs::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      flex: 1;
+      color: var(--text-3);
+      gap: 0.75rem;
+      padding: 2rem;
+    }
+    .empty-state .icon { font-size: 2.5rem; opacity: 0.4; }
+    .empty-state p { font-size: 0.9rem; line-height: 1.5; max-width: 360px; }
+
+    /* JSON Display */
+    .json-container {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      color: #a78bfa;
+      background: #090a0f;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin: 1.25rem;
+      overflow: auto;
+      flex: 1;
+      white-space: pre-wrap;
+    }
+
+    /* Messages */
+    .msg {
+      max-width: 75%;
+      padding: 0.8rem 1rem;
+      border-radius: var(--radius-lg);
+      font-size: 0.9rem;
+      line-height: 1.55;
+      animation: msgIn 0.25s ease forwards;
+      word-break: break-word;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.3rem;
+      opacity: 0.7;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--primary);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+
+    .msg.bot {
+      align-self: flex-start;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 3px;
+    }
+
+    .msg .timestamp {
+      font-size: 0.65rem;
+      margin-top: 0.3rem;
+      opacity: 0.5;
+    }
+
+    /* Per-message metrics footer (latency · tokens · cost for that turn) */
+    .msg-meta {
+      display: flex;
+      gap: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.63rem;
+      color: var(--text-3);
+      margin-top: 0.35rem;
+      padding-top: 0.3rem;
+      border-top: 1px dashed var(--border);
+      white-space: nowrap;
+    }
+
+    /* Text Input */
+    .conv-input {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .conv-input input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 0.88rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.55rem 1rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .conv-input input:focus {
+      border-color: var(--primary);
+    }
+    .conv-input input::placeholder {
+      color: var(--text-3);
+    }
+
+    .conv-input button:not(.btn-ghost) {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .conv-input button:not(.btn-ghost):hover {
+      background: var(--primary-h);
+      transform: scale(1.05);
+    }
+    .conv-input button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .conv-input button svg { width: 16px; height: 16px; }
+
+    /* ── Sidebar ──────────────────────────────────────── */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      background: var(--surface);
+    }
+
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 4px; }
+
+    .sidebar-section {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-3);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Status Items */
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.35rem 0;
+    }
+    .status-row .label { font-size: 0.82rem; color: var(--text-2); }
+    .status-row .value {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+    }
+    .status-row .value.disconnected {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+    .status-row .value.connected {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+    .status-row .value.neutral {
+      background: rgba(255,255,255,0.05);
+      color: var(--text-2);
+    }
+
+    /* Audio Visualizer */
+    .visualizer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      height: 48px;
+      background: rgba(0,0,0,0.2);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .vis-bar {
+      width: 3px;
+      background: var(--primary);
+      border-radius: 2px;
+      height: 8%;
+      transition: height 80ms ease;
+    }
+    /* Bars are driven by a WebAudio analyser on the bot's audio stream
+       (see attachVisualizer) so they reflect real playback, not a looping
+       animation — flat bars while the bot speaks means no audio arrived. */
+    .viz-caption {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.68rem;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 0.45rem 0 0.25rem;
+    }
+    .vad-pill {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .vad-pill .vad-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--surface-3);
+    }
+    .vad-pill.active { color: var(--green); }
+    .vad-pill.active .vad-dot {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: blink 1s infinite;
+    }
+    .visualizer.muted { opacity: 0.35; }
+
+    /* Config Details */
+    .config-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.3rem 0;
+      font-size: 0.82rem;
+    }
+    .config-item .ck { color: var(--text-3); }
+    .config-item .cv {
+      color: var(--text-2);
+      font-weight: 500;
+      font-size: 0.78rem;
+      text-align: right;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Events Log */
+    .event-row {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
+      font-size: 0.72rem;
+      color: var(--text-3);
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+    .event-row .evt-time {
+      color: var(--text-3);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .event-row .evt-type {
+      color: var(--cyan);
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 80px;
+    }
+    .event-row .evt-msg {
+      color: var(--text-2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── Split (live side-by-side compare) view ───────── */
+    .split-main {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+      /* The shell's config-bar row is hidden in compare mode; without an
+         explicit placement this view lands in the auto-sized row 2 and
+         leaves the stretchy row 3 empty below the input bar. */
+      grid-row: 3;
+      min-height: 0;
+    }
+    .split-panes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .pane {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+      border-right: 1px solid var(--border);
+    }
+    .pane:last-child { border-right: none; }
+
+    .pane-config {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .pane-config .selector-pill select {
+      font-size: 0.72rem;
+      padding: 0.3rem 1.6rem 0.3rem 0.6rem;
+      max-width: 150px;
+    }
+    .pane-name {
+      font-weight: 700;
+      font-size: 0.72rem;
+      color: var(--text-2);
+      background: var(--surface-3);
+      border-radius: 6px;
+      padding: 0.25rem 0.5rem;
+      letter-spacing: 0.5px;
+    }
+    .pane-config .btn-connect { margin-left: auto; }
+
+    .pane-metrics {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.35rem 0.75rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--text-3);
+    }
+    /* In panes, anchor tooltips to the left edge so they don't overflow */
+    .pane .metric-tooltip { left: 0; right: auto; }
+    .pane-dur {
+      margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-2);
+    }
+
+    .pane-msgs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      scroll-behavior: smooth;
+      min-height: 0;
+    }
+    .pane-msgs .msg { max-width: 88%; font-size: 0.84rem; }
+
+    .split-input {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .split-input input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 0.88rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.55rem 1rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .split-input input:focus { border-color: var(--primary); }
+    .split-input input::placeholder { color: var(--text-3); }
+    .split-input button:not(.btn-ghost) {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .split-input button:not(.btn-ghost):hover { background: var(--primary-h); transform: scale(1.05); }
+    .split-input button svg { width: 16px; height: 16px; }
+
+    /* Responsive tweaks */
+    @media (max-width: 700px) {
+      .toolbar { gap: 0.3rem; padding: 0.4rem 0.6rem; }
+      .selector-label { display: none; }
+      .toolbar-brand { margin-right: 0.4rem; padding-right: 0.4rem; }
+      .toolbar-brand span { display: none; }
+      .toolbar-sep { display: none; }
+      .split-panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+      .pane { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+<audio id="botAudio" autoplay style="display:none;"></audio>
+<div id="toasts"></div>
+
+<div class="shell">
+  <!-- ═══ Toolbar ═══ -->
+  <div class="toolbar">
+    <div class="toolbar-brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+      </svg>
+      <span>Playground</span>
+    </div>
+
+    <!-- View mode -->
+    <div class="pill-toggle" id="viewToggle">
+      <button data-view="solo" class="active">Solo</button>
+      <button data-view="split">Compare</button>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Currency -->
+    <div class="pill-toggle" id="currencyToggle">
+      <button data-currency="USD" class="active">USD</button>
+      <button data-currency="INR">INR</button>
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <!-- Mic mute (solo, shown while connected) -->
+    <button class="btn-mic solo-only" id="btnMic" title="Mute/unmute your microphone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      <span id="btnMicLabel">Mute</span>
+    </button>
+
+    <!-- Connect (solo) -->
+    <button class="btn-connect idle solo-only" id="btnConnect">
+      <span class="dot"></span>
+      Connect
+    </button>
+  </div>
+
+  <!-- ═══ Config Bar (solo mode selectors, single stable row) ═══ -->
+  <div class="config-bar solo-only" id="configBar">
+    <!-- Scenario -->
+    <div class="selector-group">
+      <span class="selector-label">Scenario</span>
+      <div class="selector-pill"><select id="selScenario"></select></div>
+    </div>
+
+    <!-- LLM -->
+    <div class="selector-group">
+      <span class="selector-label">LLM</span>
+      <div class="selector-pill">
+        <select id="selLLM">
+          <option value="google">Gemini 3.5 Flash</option>
+          <option value="sarvam">Sarvam 30B</option>
+          <option value="groq">Llama 3.3 70B (Groq)</option>
+          <option value="openai">GPT-4.1</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- STT -->
+    <div class="selector-group">
+      <span class="selector-label">STT</span>
+      <div class="selector-pill">
+        <select id="selSTT">
+          <option value="sarvam">Sarvam Saaras v3</option>
+          <option value="deepgram">Deepgram</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- TTS -->
+    <div class="selector-group">
+      <span class="selector-label">TTS</span>
+      <div class="selector-pill">
+        <select id="selTTS">
+          <option value="sarvam">Sarvam Bulbul v3</option>
+          <option value="cartesia">Cartesia Sonic</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Voice -->
+    <div class="selector-group">
+      <span class="selector-label">Voice</span>
+      <div class="selector-pill">
+        <select id="selVoice">
+          <option value="aditya">Aditya</option>
+          <option value="ritu">Ritu</option>
+          <option value="priya">Priya</option>
+          <option value="neha">Neha</option>
+          <option value="rahul">Rahul</option>
+          <option value="pooja">Pooja</option>
+          <option value="rohan">Rohan</option>
+          <option value="simran">Simran</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Language -->
+    <div class="selector-group">
+      <span class="selector-label">Lang</span>
+      <div class="selector-pill">
+        <select id="selLanguage">
+          <option value="en-IN">English</option>
+          <option value="hi-IN">Hindi</option>
+          <option value="te-IN">Telugu</option>
+          <option value="ta-IN">Tamil</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Main (Solo) ═══ -->
+  <div class="main" id="soloMain">
+    <!-- Conversation -->
+    <div class="conversation">
+      <div class="conv-tabs">
+        <div class="tab-buttons">
+          <button class="conv-tab active" data-tab="audio">Test Audio</button>
+          <button class="conv-tab" data-tab="llm">Test LLM</button>
+          <button class="conv-tab" data-tab="config">{}</button>
+          <button class="conv-tab" data-tab="events">Events</button>
+          <button class="btn-ghost tab-action" id="btnClear" title="Clear the conversation, context, and cost/latency/token metrics (restarts a live call)">🗑 Clear</button>
+          <button class="btn-ghost tab-action" id="btnRestart" title="Restart the conversation (reconnects the call in voice mode)">↻ Restart</button>
+        </div>
+
+        <div class="metrics-bar">
+          <!-- Cost -->
+          <div class="metric-item tooltip-trigger">
+            Cost <span class="m-val" id="metricCost">$0.000</span>
+            <div class="metric-tooltip">
+              <div class="tooltip-title">Session Cost</div>
+              <div class="tooltip-val" id="tipTotalCost">$0.000</div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row"><span id="tipCostSTTLabel">STT</span><span id="tipCostSTT">$0.000</span></div>
+              <div class="tooltip-row"><span id="tipCostLLMLabel">LLM</span><span id="tipCostLLM">$0.000</span></div>
+              <div class="tooltip-row"><span id="tipCostTTSLabel">TTS</span><span id="tipCostTTS">$0.000</span></div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row"><span>Effective rate</span><span id="tipCostPerMin">$0.000/min</span></div>
+              <div class="tooltip-note">Computed from real usage (LLM tokens, TTS characters, audio minutes) at configurable list rates.</div>
+            </div>
+          </div>
+          <!-- Latency -->
+          <div class="metric-item tooltip-trigger">
+            Latency <span class="m-val" id="metricLatency">—</span>
+            <div class="metric-tooltip">
+              <div class="tooltip-title">Voice-to-Voice Latency</div>
+              <div class="tooltip-val" id="tipTotalLatency">—</div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row"><span>Transcription (STT)</span><span id="tipSTT">—</span></div>
+              <div class="tooltip-row"><span>Inference (LLM)</span><span id="tipLLM">—</span></div>
+              <div class="tooltip-row"><span>Speech Gen (TTS)</span><span id="tipTTS">—</span></div>
+              <div class="tooltip-note">Headline = time from you finishing speaking to bot audio. Rows are per-service time-to-first-byte reported by the pipeline.</div>
+            </div>
+          </div>
+          <!-- Tokens -->
+          <div class="metric-item tooltip-trigger">
+            Tokens <span class="m-val" id="metricTokens">0</span>
+            <div class="metric-tooltip">
+              <div class="tooltip-title">LLM Token Usage</div>
+              <div class="tooltip-val" id="tipTotalTokens">0</div>
+              <div class="tooltip-divider"></div>
+              <div class="tooltip-row"><span>Prompt tokens</span><span id="tipPromptTokens">0</span></div>
+              <div class="tooltip-row"><span>Completion tokens</span><span id="tipCompletionTokens">0</span></div>
+              <div class="tooltip-row"><span>TTS characters</span><span id="tipTTSChars">0</span></div>
+              <div class="tooltip-note">Actual usage reported by the model, accumulated over this session.</div>
+            </div>
+          </div>
+          <!-- Duration -->
+          <div class="metric-item">
+            Duration <span class="m-val" id="metricDuration">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test Audio Tab -->
+      <div id="viewAudio" class="conv-messages">
+        <div class="empty-state" id="emptyStateAudio">
+          <div class="icon">🎙️</div>
+          <p>Click <strong>Connect</strong> in the top toolbar to start real-time audio interaction.</p>
+          <p style="font-size:0.78rem; color: var(--text-3);">Your selected LLM, STT, TTS, Voice, and Language will be active — switch any of them mid-call and the call restarts with the new setup.</p>
+        </div>
+      </div>
+
+      <!-- Test LLM Tab (Direct Text Chat) -->
+      <div id="viewLLM" class="conv-messages" style="display:none;">
+        <div class="empty-state" id="emptyStateLLM">
+          <div class="icon">💬</div>
+          <strong>Text Chat</strong>
+          <p>Chat with the selected LLM directly over text — no voice pipeline. Type a query below to begin.</p>
+        </div>
+      </div>
+
+      <!-- JSON Config Tab -->
+      <div id="viewConfig" class="conv-messages" style="display:none; padding: 0;">
+        <pre class="json-container" id="jsonDisplay"></pre>
+      </div>
+
+      <!-- Events Tab -->
+      <div id="viewEvents" class="conv-messages" style="display:none; padding:0.75rem 1rem;">
+      </div>
+
+      <!-- Text Input -->
+      <div class="conv-input">
+        <button class="btn-ghost" id="btnSoloSimulate" title="Auto-play the selected scenario's sample conversation">▶ Simulate</button>
+        <input type="text" id="txtInput" placeholder="Type a message to send..." disabled>
+        <button id="btnSend" disabled title="Send text message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <!-- Status -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Status</div>
+        <div class="status-row">
+          <span class="label">Client</span>
+          <span class="value disconnected" id="stClient">Disconnected</span>
+        </div>
+        <div class="status-row">
+          <span class="label">Agent</span>
+          <span class="value disconnected" id="stAgent">Disconnected</span>
+        </div>
+      </div>
+
+      <!-- Audio Visualizer -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Audio Activity</div>
+        <div class="viz-caption"><span>Bot</span></div>
+        <div class="visualizer" id="visualizer">
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div>
+        </div>
+        <div class="viz-caption">
+          <span>You</span>
+          <span class="vad-pill" id="vadPill" title="Lights up when the pipeline's voice activity detection hears you speaking">
+            <span class="vad-dot"></span><span id="vadText">silent</span>
+          </span>
+        </div>
+        <div class="visualizer" id="micVisualizer">
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+          <div class="vis-bar"></div>
+        </div>
+      </div>
+
+      <!-- Active Config -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Active Config</div>
+        <div class="config-item"><span class="ck">Scenario</span><span class="cv" id="cfgScenario">—</span></div>
+        <div class="config-item"><span class="ck">LLM</span><span class="cv" id="cfgLLM">—</span></div>
+        <div class="config-item"><span class="ck">STT</span><span class="cv" id="cfgSTT">—</span></div>
+        <div class="config-item"><span class="ck">TTS</span><span class="cv" id="cfgTTS">—</span></div>
+        <div class="config-item"><span class="ck">Voice</span><span class="cv" id="cfgVoice">—</span></div>
+        <div class="config-item"><span class="ck">Language</span><span class="cv" id="cfgLanguage">—</span></div>
+      </div>
+
+      <!-- Session -->
+      <div class="sidebar-section">
+        <div class="sidebar-title">Session</div>
+        <div class="config-item"><span class="ck">Transport</span><span class="cv" id="cfgTransport">Small WebRTC</span></div>
+        <div class="config-item"><span class="ck">Session ID</span><span class="cv" id="cfgSession">—</span></div>
+        <div class="config-item"><span class="ck">Duration</span><span class="cv" id="cfgDuration">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Split Main (live side-by-side Compare) ═══ -->
+  <div class="split-main" id="splitMain" style="display:none;">
+    <div class="split-panes">
+      <div class="pane" data-pane="A"></div>
+      <div class="pane" data-pane="B"></div>
+    </div>
+    <div class="split-input">
+      <button class="btn-ghost" id="btnBothConnect" title="Start or end both voice calls together">Connect both</button>
+      <button class="btn-ghost" id="btnSimulate" title="Auto-play pane A's scenario sample conversation on both agents">▶ Simulate</button>
+      <button class="btn-ghost" id="btnSplitClear" title="Clear both panes' conversations">🗑 Clear</button>
+      <input type="text" id="splitInput" placeholder="Type once — goes to both agents (text chat when disconnected, live turn when connected). Or connect and speak.">
+      <button id="splitSend" title="Send to both agents">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  // Import without version pins to guarantee compatibility on esm.sh
+  import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js";
+  import { SmallWebRTCTransport } from "https://esm.sh/@pipecat-ai/small-webrtc-transport";
+
+  // ── DOM refs ───────────────────────────────────────
+  const selScenario = document.getElementById('selScenario');
+  const selLLM   = document.getElementById('selLLM');
+  const selSTT   = document.getElementById('selSTT');
+  const selTTS   = document.getElementById('selTTS');
+  const selVoice = document.getElementById('selVoice');
+  const selLanguage = document.getElementById('selLanguage');
+  const currencyToggle = document.getElementById('currencyToggle');
+  const viewToggle = document.getElementById('viewToggle');
+  const soloMain = document.getElementById('soloMain');
+  const splitMain = document.getElementById('splitMain');
+  const splitInput = document.getElementById('splitInput');
+  const splitSend = document.getElementById('splitSend');
+  const btnConnect  = document.getElementById('btnConnect');
+  const txtInput  = document.getElementById('txtInput');
+  const btnSend   = document.getElementById('btnSend');
+  const stClient  = document.getElementById('stClient');
+  const stAgent   = document.getElementById('stAgent');
+  const visualizer = document.getElementById('visualizer');
+
+  // ── Real audio visualizers: WebAudio analysers on live streams ──────
+  // Bars show actual audio energy; flat bars while something should be
+  // audible means the audio isn't arriving/decoding in this browser.
+  function makeVizDriver(container) {
+    let ctx = null, raf = null;
+    return {
+      attach(stream) {
+        this.detach();
+        try {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          const bins = new Uint8Array(analyser.frequencyBinCount);
+          const bars = container.querySelectorAll('.vis-bar');
+          const draw = () => {
+            analyser.getByteFrequencyData(bins);
+            bars.forEach((bar, i) => {
+              const v = bins[Math.floor(i * bins.length / bars.length)] / 255;
+              bar.style.height = `${8 + v * 80}%`;
+            });
+            raf = requestAnimationFrame(draw);
+          };
+          draw();
+        } catch (e) {
+          console.error('Visualizer setup failed:', e);
+        }
+      },
+      detach() {
+        if (raf) cancelAnimationFrame(raf);
+        raf = null;
+        if (ctx) ctx.close().catch(() => {});
+        ctx = null;
+        container.querySelectorAll('.vis-bar').forEach(b => b.style.height = '8%');
+      },
+    };
+  }
+
+  const botViz = makeVizDriver(visualizer);
+  const micVisualizer = document.getElementById('micVisualizer');
+  const micViz = makeVizDriver(micVisualizer);
+  const vadPill = document.getElementById('vadPill');
+  const vadText = document.getElementById('vadText');
+  let micVizStream = null;
+
+  function attachVisualizer(stream) { botViz.attach(stream); }
+  function detachVisualizer() { botViz.detach(); }
+
+  // Local mic meter (independent capture — shows what your mic picks up)
+  async function startMicViz() {
+    try {
+      micVizStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micViz.attach(micVizStream);
+    } catch (e) {
+      addEvent('error', `Mic meter unavailable: ${e.message}`);
+    }
+  }
+  function stopMicViz() {
+    micViz.detach();
+    if (micVizStream) {
+      micVizStream.getTracks().forEach(t => t.stop());
+      micVizStream = null;
+    }
+    setVadActive(false);
+    micVisualizer.classList.remove('muted');
+  }
+
+  // VAD badge: driven by the pipeline's user-speaking events, so it shows
+  // what the bot actually heard (not just local mic level)
+  function setVadActive(active) {
+    vadPill.classList.toggle('active', active);
+    vadText.textContent = active ? 'speaking' : 'silent';
+  }
+
+  const cfgScenario = document.getElementById('cfgScenario');
+  const cfgLLM    = document.getElementById('cfgLLM');
+  const cfgSTT    = document.getElementById('cfgSTT');
+  const cfgTTS    = document.getElementById('cfgTTS');
+  const cfgVoice  = document.getElementById('cfgVoice');
+  const cfgLanguage = document.getElementById('cfgLanguage');
+  const cfgSession  = document.getElementById('cfgSession');
+  const cfgDuration = document.getElementById('cfgDuration');
+
+  // Metrics DOM refs
+  const metricCost = document.getElementById('metricCost');
+  const metricLatency = document.getElementById('metricLatency');
+  const metricTokens = document.getElementById('metricTokens');
+  const tipTotalCost = document.getElementById('tipTotalCost');
+  const tipCostSTT = document.getElementById('tipCostSTT');
+  const tipCostLLM = document.getElementById('tipCostLLM');
+  const tipCostTTS = document.getElementById('tipCostTTS');
+  const tipCostSTTLabel = document.getElementById('tipCostSTTLabel');
+  const tipCostLLMLabel = document.getElementById('tipCostLLMLabel');
+  const tipCostTTSLabel = document.getElementById('tipCostTTSLabel');
+  const tipCostPerMin = document.getElementById('tipCostPerMin');
+  const tipTotalLatency = document.getElementById('tipTotalLatency');
+  const tipSTT = document.getElementById('tipSTT');
+  const tipLLM = document.getElementById('tipLLM');
+  const tipTTS = document.getElementById('tipTTS');
+  const tipTotalTokens = document.getElementById('tipTotalTokens');
+  const tipPromptTokens = document.getElementById('tipPromptTokens');
+  const tipCompletionTokens = document.getElementById('tipCompletionTokens');
+  const tipTTSChars = document.getElementById('tipTTSChars');
+
+  // Tab views
+  const viewAudio  = document.getElementById('viewAudio');
+  const viewLLM    = document.getElementById('viewLLM');
+  const viewConfig = document.getElementById('viewConfig');
+  const viewEvents = document.getElementById('viewEvents');
+  const jsonDisplay = document.getElementById('jsonDisplay');
+
+  let client = null;
+  let isConnected = false;
+  let sessionStart = null;
+  let durationTimer = null;
+  let activeTab = 'audio';
+  let currency = 'USD';
+  let activeView = 'solo';
+
+  // ── Playground config (from server) ────────────────
+  let CONFIG = {
+    providers: { llm: [], stt: [], tts: [] },
+    voices: {},
+    languages: [{ code: 'en-IN', label: 'English' }],
+    scenarios: [{ value: 'generic', label: 'General Assistant' }],
+    pricing: { stt: {}, tts: {}, llm: {} },
+    usd_inr: 88.0,
+  };
+
+  // ── Session usage (real, accumulated from pipeline metrics) ──
+  const usage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    ttsChars: 0,
+    speechMs: 0,           // accumulated user speaking time (for speech-billed STT)
+    speechStart: null,     // timestamp of the utterance in progress, if any
+    ttfb: { stt: null, llm: null, tts: null },   // seconds
+    turnLatencyMs: null,
+  };
+  let userStoppedTime = null;
+
+  function resetUsage() {
+    usage.promptTokens = 0;
+    usage.completionTokens = 0;
+    usage.ttsChars = 0;
+    usage.speechMs = 0;
+    usage.speechStart = null;
+    usage.ttfb = { stt: null, llm: null, tts: null };
+    usage.turnLatencyMs = null;
+    userStoppedTime = null;
+  }
+
+  // User speaking time, including an utterance still in progress
+  function speechMinutes(u) {
+    const openMs = u.speechStart ? Date.now() - u.speechStart : 0;
+    return (u.speechMs + openMs) / 60000;
+  }
+
+  // ── Currency / cost helpers (shared by solo + panes) ──
+  function fmtMoney(usd, decimals = 4) {
+    if (usd == null) return '—';
+    if (currency === 'INR') {
+      return '₹' + (usd * CONFIG.usd_inr).toFixed(Math.max(2, decimals - 1));
+    }
+    return '$' + usd.toFixed(decimals);
+  }
+
+  // Realtime (speech-to-speech) LLMs replace the whole cascade: no STT/TTS
+  function isRealtimeLLM(val) {
+    return !!((CONFIG.providers.llm.find(p => p.value === val) || {}).realtime);
+  }
+
+  function ratesFor(sttVal, ttsVal, llmVal) {
+    const rt = isRealtimeLLM(llmVal);
+    return {
+      stt: rt ? 0 : (CONFIG.pricing.stt[sttVal] || {}).per_min || 0,
+      // "speech" = VAD-segmented provider, billed only on user utterances;
+      // "stream" = continuous websocket, billed on elapsed session time
+      sttBilling: (CONFIG.pricing.stt[sttVal] || {}).billing || 'stream',
+      tts: rt ? 0 : (CONFIG.pricing.tts[ttsVal] || {}).per_1k_chars || 0,
+      llm: CONFIG.pricing.llm[llmVal] || { in_per_1m: 0, out_per_1m: 0 },
+    };
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function sampleFor(scenarioValue) {
+    return ((CONFIG.scenarios || []).find(s => s.value === scenarioValue) || {}).sample || [];
+  }
+
+  function costsFrom(r, u, startMs) {
+    const elapsedMin = startMs ? (Date.now() - startMs) / 60000 : 0;
+    const sttMin = r.sttBilling === 'speech' ? speechMinutes(u) : elapsedMin;
+    const sttCost = sttMin * r.stt;
+    const llmCost = (u.promptTokens * r.llm.in_per_1m + u.completionTokens * r.llm.out_per_1m) / 1e6;
+    const ttsCost = (u.ttsChars / 1000) * r.tts;
+    return { sttCost, llmCost, ttsCost, total: sttCost + llmCost + ttsCost, elapsedMin };
+  }
+
+  // Classify a pipeline processor name (e.g. "SarvamSTTService#0") to a stage
+  function stageOf(processor) {
+    const p = (processor || '').toUpperCase();
+    if (p.includes('STT')) return 'stt';
+    if (p.includes('TTS')) return 'tts';
+    if (p.includes('LLM')) return 'llm';
+    return null;
+  }
+
+  // Accumulate a real RTVI metrics message into a usage object
+  function accumulateMetrics(u, data) {
+    if (!data) return;
+    (data.ttfb || []).forEach(m => {
+      const stage = stageOf(m.processor);
+      if (stage && m.value > 0) u.ttfb[stage] = m.value;
+    });
+    (data.tokens || []).forEach(t => {
+      u.promptTokens += t.prompt_tokens || 0;
+      u.completionTokens += t.completion_tokens || 0;
+    });
+    (data.characters || []).forEach(ch => {
+      u.ttsChars += ch.value || 0;
+    });
+  }
+
+  function computeCosts() {
+    return costsFrom(ratesFor(selSTT.value, selTTS.value, selLLM.value), usage, sessionStart);
+  }
+
+  function renderMetrics() {
+    const c = computeCosts();
+    metricCost.textContent = fmtMoney(c.total);
+    tipTotalCost.textContent = fmtMoney(c.total);
+    tipCostSTT.textContent = fmtMoney(c.sttCost);
+    tipCostLLM.textContent = fmtMoney(c.llmCost);
+    tipCostTTS.textContent = fmtMoney(c.ttsCost);
+    tipCostPerMin.textContent = c.elapsedMin > 0.05
+      ? fmtMoney(c.total / c.elapsedMin) + '/min' : '—';
+
+    const r = ratesFor(selSTT.value, selTTS.value, selLLM.value);
+    tipCostSTTLabel.textContent =
+      `STT (${fmtMoney(r.stt, 4)}/min${r.sttBilling === 'speech' ? ' of speech' : ''})`;
+    tipCostLLMLabel.textContent = `LLM (tokens)`;
+    tipCostTTSLabel.textContent = `TTS (${fmtMoney(r.tts, 4)}/1k chars)`;
+
+    // Tokens
+    const totalTok = usage.promptTokens + usage.completionTokens;
+    metricTokens.textContent = totalTok.toLocaleString();
+    tipTotalTokens.textContent = totalTok.toLocaleString();
+    tipPromptTokens.textContent = usage.promptTokens.toLocaleString();
+    tipCompletionTokens.textContent = usage.completionTokens.toLocaleString();
+    tipTTSChars.textContent = usage.ttsChars.toLocaleString();
+
+    // Latency
+    const ms = (s) => s == null ? '—' : Math.round(s * 1000) + 'ms';
+    tipSTT.textContent = ms(usage.ttfb.stt);
+    tipLLM.textContent = ms(usage.ttfb.llm);
+    tipTTS.textContent = ms(usage.ttfb.tts);
+    if (usage.turnLatencyMs != null) {
+      metricLatency.textContent = usage.turnLatencyMs + 'ms';
+      tipTotalLatency.textContent = usage.turnLatencyMs + 'ms';
+    }
+  }
+
+  // ── Populate selectors from /api/config ────────────
+  function fillSelect(sel, options, selected) {
+    sel.innerHTML = '';
+    const groups = {};   // group label -> <optgroup>, created in first-seen order
+    options.forEach(o => {
+      // Entries whose provider key isn't configured are hidden entirely
+      if (o.available === false) return;
+      const opt = document.createElement('option');
+      opt.value = o.value ?? o.code;
+      opt.textContent = o.label;
+      let parent = sel;
+      if (o.group) {
+        if (!groups[o.group]) {
+          groups[o.group] = document.createElement('optgroup');
+          groups[o.group].label = o.group;
+          sel.appendChild(groups[o.group]);
+        }
+        parent = groups[o.group];
+      }
+      parent.appendChild(opt);
+    });
+    if (selected) sel.value = selected;
+    // If the requested value doesn't exist, or lands on a disabled
+    // (key-missing) option, fall back to the first enabled option
+    if (sel.selectedIndex < 0 || sel.options[sel.selectedIndex]?.disabled) {
+      const first = [...sel.options].find(opt => !opt.disabled);
+      if (first) sel.value = first.value;
+    }
+  }
+
+  function fillVoices() {
+    // Realtime LLMs own the voice; otherwise the TTS provider does
+    const key = isRealtimeLLM(selLLM.value) ? selLLM.value : selTTS.value;
+    // Keep the user's voice if it exists in the new list (rebuilds happen on
+    // LLM/TTS changes and after every reconnect)
+    fillSelect(selVoice, CONFIG.voices[key] || [], selVoice.value);
+  }
+
+  // Languages the active provider combo can actually handle: intersection of
+  // the STT and TTS entries' "languages" (realtime LLMs own both legs).
+  // An entry without a "languages" key supports everything.
+  function langSupport(kind, val) {
+    const e = (CONFIG.providers[kind] || []).find(p => p.value === val);
+    return e && e.languages ? new Set(e.languages) : null;
+  }
+  function allowedLanguages(llmVal, sttVal, ttsVal) {
+    const sets = isRealtimeLLM(llmVal)
+      ? [langSupport('llm', llmVal)]
+      : [langSupport('stt', sttVal), langSupport('tts', ttsVal)];
+    const filtered = (CONFIG.languages || []).filter(
+      l => sets.every(s => !s || s.has(l.code)));
+    return filtered.length ? filtered : CONFIG.languages;
+  }
+  function langLabelOf(code) {
+    return ((CONFIG.languages || []).find(l => l.code === code) || {}).label || code;
+  }
+  function fillLanguages() {
+    const prev = selLanguage.value;
+    const allowed = allowedLanguages(selLLM.value, selSTT.value, selTTS.value);
+    fillSelect(selLanguage, allowed, prev);
+    // Explain why the list is what it is
+    const rt = isRealtimeLLM(selLLM.value);
+    selLanguage.title = rt
+      ? `Languages supported by ${labelOf(selLLM)}`
+      : `Languages supported by both ${labelOf(selSTT)} (STT) and ${labelOf(selTTS)} (TTS)`;
+    // If the previous language is no longer supported, say so instead of
+    // silently switching
+    if (prev && selLanguage.value !== prev) {
+      showToast(
+        `${langLabelOf(prev)} isn't supported by this STT/TTS combo — ` +
+        `language set to ${langLabelOf(selLanguage.value)}`);
+    }
+  }
+  selSTT.addEventListener('change', fillLanguages);
+
+  // Disable the STT/TTS selectors when a realtime (S2S) LLM is selected —
+  // they are not part of a realtime pipeline.
+  function updateSoloRealtimeUI() {
+    const rt = isRealtimeLLM(selLLM.value);
+    if (!isConnected) {
+      selSTT.disabled = rt;
+      selTTS.disabled = rt;
+    }
+    fillVoices();
+    fillLanguages();
+  }
+  selLLM.addEventListener('change', updateSoloRealtimeUI);
+
+  async function loadConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) CONFIG = await res.json();
+    } catch (e) {
+      console.warn('Could not load /api/config, using defaults', e);
+    }
+    fillSelect(selScenario, CONFIG.scenarios || []);
+    fillSelect(selLLM, CONFIG.providers.llm, CONFIG.default_llm);
+    fillSelect(selSTT, CONFIG.providers.stt, CONFIG.default_stt);
+    fillSelect(selTTS, CONFIG.providers.tts, CONFIG.default_tts);
+    fillVoices();
+    fillLanguages();
+    updateSoloRealtimeUI();
+    syncConfigDisplay();
+    renderMetrics();
+    panes.forEach(p => p.fillOptions());
+  }
+
+  selTTS.addEventListener('change', () => { fillVoices(); fillLanguages(); });
+
+  // Currency toggle
+  currencyToggle.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currency = btn.dataset.currency;
+      currencyToggle.querySelectorAll('button').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      renderMetrics();
+      panes.forEach(p => p.renderMetrics());
+      rerenderAllMsgMeta();   // per-message footers follow the currency too
+      addEvent('config', `Currency switched to ${currency}`);
+    });
+  });
+
+  // Sync sidebar and JSON config display
+  function labelOf(sel) {
+    return sel.options[sel.selectedIndex]?.text || '—';
+  }
+
+  function syncConfigDisplay() {
+    cfgScenario.textContent = labelOf(selScenario);
+    cfgLLM.textContent = labelOf(selLLM);
+    cfgSTT.textContent = labelOf(selSTT);
+    cfgTTS.textContent = labelOf(selTTS);
+    cfgVoice.textContent = labelOf(selVoice);
+    cfgLanguage.textContent = labelOf(selLanguage);
+
+    jsonDisplay.textContent = JSON.stringify({
+      scenario: selScenario.value,
+      llm: selLLM.value,
+      stt: selSTT.value,
+      tts: selTTS.value,
+      voice: selVoice.value,
+      language: selLanguage.value,
+      currency,
+      transport: 'webrtc',
+      pricing_usd: {
+        stt: CONFIG.pricing.stt[selSTT.value],
+        tts: CONFIG.pricing.tts[selTTS.value],
+        llm: CONFIG.pricing.llm[selLLM.value],
+      },
+    }, null, 2);
+  }
+  [selScenario, selLLM, selSTT, selTTS, selVoice, selLanguage].forEach(el =>
+    el.addEventListener('change', () => {
+      syncConfigDisplay();
+      renderMetrics();
+      // Keep the Test LLM placeholder naming the currently selected model
+      if (activeTab === 'llm') {
+        txtInput.placeholder = 'Type a message to chat directly with ' + labelOf(selLLM) + '...';
+      }
+      // Providers are wired into the pipeline at session start, so a mid-call
+      // switch restarts the call with the new config (transcript is kept).
+      if (isConnected && client && !restartPending) {
+        restartPending = true;
+        addEvent('config', `${labelOf(el)} selected — restarting the call with the new config…`);
+        showToast(`Switched to ${labelOf(el)} — restarting the call…`);
+        client.disconnect();
+      }
+    }));
+
+  // A persona swap mid-conversation would confuse the LLM — start text chat fresh
+  selScenario.addEventListener('change', () => {
+    chatHistory = [];
+    addEvent('config', `Scenario switched to ${labelOf(selScenario)}; text chat history cleared`);
+  });
+
+  // ── Tab switching ──────────────────────────────────
+  document.querySelectorAll('.conv-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.conv-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      activeTab = tab.dataset.tab;
+
+      viewAudio.style.display = activeTab === 'audio' ? '' : 'none';
+      viewLLM.style.display   = activeTab === 'llm' ? '' : 'none';
+      viewConfig.style.display = activeTab === 'config' ? '' : 'none';
+      viewEvents.style.display = activeTab === 'events' ? '' : 'none';
+
+      if (activeTab === 'llm') {
+        btnConnect.style.display = 'none';
+        txtInput.disabled = false;
+        btnSend.disabled = false;
+        txtInput.placeholder = 'Type a message to chat directly with ' + labelOf(selLLM) + '...';
+      } else {
+        btnConnect.style.display = '';
+        if (isConnected) {
+          txtInput.disabled = false;
+          btnSend.disabled = false;
+          txtInput.placeholder = 'Type a message to send to voice agent...';
+        } else {
+          txtInput.disabled = true;
+          btnSend.disabled = true;
+          txtInput.placeholder = 'Type a message to send...';
+        }
+      }
+    });
+  });
+
+  // ── Helpers ────────────────────────────────────────
+  // Transient feedback the user sees without opening the Events tab
+  function showToast(message, kind = 'info', ms = 3500) {
+    const box = document.getElementById('toasts');
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind === 'error' ? ' error' : '');
+    el.textContent = message;
+    box.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 250);
+    }, ms);
+  }
+
+  function timeStr() {
+    return new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // Returns the content <div>, so transcript fragments can be appended
+  function addMessage(sender, text, targetView) {
+    const emptyState = targetView.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+
+    const div = document.createElement('div');
+    div.className = `msg ${sender}`;
+    div.innerHTML = `
+      <div class="msg-label">${sender === 'user' ? 'You' : 'Assistant'}</div>
+      <div class="msg-content"></div>
+      <div class="timestamp">${timeStr()}</div>
+    `;
+    div.querySelector('.msg-content').textContent = text;
+    targetView.appendChild(div);
+    targetView.scrollTop = targetView.scrollHeight;
+    return div.querySelector('.msg-content');
+  }
+
+  // Write (or update) the per-turn metrics footer inside a message bubble
+  // Normalized list price of an LLM, for apples-to-apples comparison in
+  // message meta lines (per-message cost depends on turn length; this doesn't)
+  function llmRateStr(llmVal) {
+    const r = CONFIG.pricing.llm[llmVal];
+    if (!r || r.in_per_1m == null) return null;
+    return `${fmtMoney(r.in_per_1m, 2)} in / ${fmtMoney(r.out_per_1m, 2)} out per 1M tok`;
+  }
+
+  function setMsgMeta(contentEl, parts, costUsd) {
+    if (!contentEl) return;
+    const msg = contentEl.closest('.msg');
+    if (!msg) return;
+    let meta = msg.querySelector('.msg-meta');
+    if (!meta) {
+      meta = document.createElement('div');
+      meta.className = 'msg-meta';
+      msg.appendChild(meta);
+    }
+    // Cost is stored raw (USD) so footers re-render when the currency changes
+    meta.dataset.parts = JSON.stringify(parts.filter(p => p != null && p !== ''));
+    if (costUsd != null && costUsd > 0) meta.dataset.costUsd = costUsd;
+    else delete meta.dataset.costUsd;
+    renderMsgMeta(meta);
+  }
+
+  function renderMsgMeta(meta) {
+    const parts = JSON.parse(meta.dataset.parts || '[]');
+    if (meta.dataset.costUsd != null) {
+      parts.push(fmtMoney(parseFloat(meta.dataset.costUsd)));
+    }
+    meta.textContent = parts.join(' · ');
+  }
+
+  function rerenderAllMsgMeta() {
+    document.querySelectorAll('.msg-meta').forEach(renderMsgMeta);
+  }
+
+  // Turn-level transcript aggregation: consecutive fragments from the same
+  // speaker merge into one bubble instead of one bubble per sentence.
+  let curBotContent = null;
+  let curUserContent = null;
+
+  // Per-turn tracking for the solo voice view: usage/cost baseline captured
+  // when a bot bubble opens, so the delta is that turn's own consumption.
+  let soloOpenBot = null;
+  let soloSessionLLM = null;   // LLM label frozen at connect time, shown per turn
+
+  // "196 tok (93 in / 103 out)" — the split surfaces hidden overhead
+  // (prompt scaffolding, invisible reasoning) that raw totals mask
+  function tokStr(p, c) {
+    const total = p + c;
+    if (total <= 0) return null;
+    return `${total.toLocaleString()} tok (${p.toLocaleString()} in / ${c.toLocaleString()} out)`;
+  }
+
+  function updateSoloBotMeta() {
+    if (!soloOpenBot) return;
+    const p = usage.promptTokens - soloOpenBot.basePrompt;
+    const c = usage.completionTokens - soloOpenBot.baseCompletion;
+    const cost = Math.max(0, computeCosts().total - soloOpenBot.baseCost);
+    setMsgMeta(soloOpenBot.el, [
+      soloSessionLLM,
+      usage.turnLatencyMs != null ? usage.turnLatencyMs + 'ms' : null,
+      tokStr(p, c),
+      llmRateStr(selLLM.value),
+    ], cost);
+  }
+
+  function appendTranscript(sender, text) {
+    if (sender === 'bot') {
+      curUserContent = null;
+      if (curBotContent) {
+        curBotContent.textContent += ' ' + text;
+      } else {
+        curBotContent = addMessage('bot', text, viewAudio);
+        soloOpenBot = {
+          el: curBotContent,
+          basePrompt: usage.promptTokens,
+          baseCompletion: usage.completionTokens,
+          baseCost: computeCosts().total,
+        };
+        updateSoloBotMeta();
+      }
+    } else {
+      curBotContent = null;
+      if (curUserContent) {
+        curUserContent.textContent += ' ' + text;
+      } else {
+        curUserContent = addMessage('user', text, viewAudio);
+        soloOpenBot = null;   // bot turn is finished; its meta line is final
+      }
+    }
+    viewAudio.scrollTop = viewAudio.scrollHeight;
+  }
+
+  function addEvent(type, msg) {
+    const row = document.createElement('div');
+    row.className = 'event-row';
+    row.innerHTML = `
+      <span class="evt-time">${timeStr()}</span>
+      <span class="evt-type"></span>
+      <span class="evt-msg"></span>
+    `;
+    row.querySelector('.evt-type').textContent = type;
+    row.querySelector('.evt-msg').textContent = msg;
+    viewEvents.appendChild(row);
+    viewEvents.scrollTop = viewEvents.scrollHeight;
+  }
+
+  function setConnectState(state) {
+    btnConnect.className = `btn-connect ${state} solo-only`;
+    if (state === 'idle') {
+      btnConnect.innerHTML = '<span class="dot"></span>Connect';
+    } else if (state === 'connecting') {
+      btnConnect.innerHTML = '<span class="dot"></span>Connecting…';
+    } else if (state === 'connected') {
+      btnConnect.innerHTML = '<span class="dot"></span>Disconnect';
+    }
+  }
+
+  function setStatus(el, connected) {
+    el.textContent = connected ? 'Connected' : 'Disconnected';
+    el.className = `value ${connected ? 'connected' : 'disconnected'}`;
+  }
+
+  function lockSelectors(locked) {
+    [selScenario, selLLM, selSTT, selTTS, selVoice, selLanguage].forEach(s => s.disabled = locked);
+    if (!locked) updateSoloRealtimeUI();   // re-disable STT/TTS if a realtime LLM is selected
+  }
+
+  const metricDuration = document.getElementById('metricDuration');
+
+  function startDurationTimer() {
+    sessionStart = Date.now();
+    durationTimer = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - sessionStart) / 1000);
+      const m = Math.floor(elapsedSec / 60);
+      const sec = elapsedSec % 60;
+      const durStr = `${m}:${String(sec).padStart(2, '0')}`;
+      cfgDuration.textContent = durStr;
+      metricDuration.textContent = durStr;
+      renderMetrics();   // STT cost accrues with audio time
+    }, 1000);
+  }
+
+  function stopDurationTimer() {
+    clearInterval(durationTimer);
+    durationTimer = null;
+    sessionStart = null;
+  }
+
+  // ── Connect/Disconnect (Solo Test Audio) ───────────
+  async function handleConnect() {
+    // Unlock the static audio element synchronously in user click handler
+    const botAudio = document.getElementById('botAudio');
+    if (botAudio) {
+      botAudio.play().catch(() => {});
+    }
+
+    if (isConnected) {
+      setConnectState('connecting');
+      addEvent('action', 'User requested disconnect');
+      if (client) await client.disconnect();
+      return;
+    }
+
+    btnConnect.disabled = true;
+    lockSelectors(true);
+    setConnectState('connecting');
+    addEvent('transport', 'Initiating WebRTC connection…');
+
+    const configData = {
+      scenario: selScenario.value || 'generic',
+      llm: selLLM.value || 'google',
+      stt: selSTT.value || 'sarvam',
+      tts: selTTS.value || 'sarvam',
+      voice: selVoice.value || 'aditya',
+      language: selLanguage.value || 'en-IN',
+    };
+
+    syncConfigDisplay();
+
+    // Reset session metrics
+    resetUsage();
+    curBotContent = null;
+    curUserContent = null;
+    soloOpenBot = null;
+    soloBotTurnsDone = 0;
+    soloSessionLLM = labelOf(selLLM);
+    metricLatency.textContent = '—';
+    tipTotalLatency.textContent = '—';
+    metricDuration.textContent = '—';
+    renderMetrics();
+
+    try {
+      const transport = new SmallWebRTCTransport({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+
+      client = new PipecatClient({
+        transport,
+        enableMic: true,
+        enableCam: false,
+        callbacks: {
+          onConnected: () => {
+            isConnected = true;
+            setConnectState('connected');
+            setStatus(stClient, true);
+            setStatus(stAgent, true);
+            btnConnect.disabled = false;
+            txtInput.disabled = false;
+            btnSend.disabled = false;
+            visualizer.classList.add('active');
+            startMicViz();
+            // Selectors stay usable during the call — changing one restarts
+            // the session with the new config (see the change listener).
+            lockSelectors(false);
+            setMicUI(false);
+            btnMic.classList.add('visible');
+            cfgSession.textContent = (Math.random().toString(36).slice(2, 10) + '…').toUpperCase();
+            startDurationTimer();
+            addEvent('connected', `LLM=${configData.llm} STT=${configData.stt} TTS=${configData.tts} Voice=${configData.voice} Lang=${configData.language}`);
+          },
+          onDisconnected: () => {
+            isConnected = false;
+            setConnectState('idle');
+            setStatus(stClient, false);
+            setStatus(stAgent, false);
+            btnConnect.disabled = false;
+            txtInput.disabled = true;
+            btnSend.disabled = true;
+            lockSelectors(false);
+            visualizer.classList.remove('active');
+            detachVisualizer();
+            stopMicViz();
+            resetMic();
+            if (usage.speechStart) {   // close an utterance cut off by disconnect
+              usage.speechMs += Date.now() - usage.speechStart;
+              usage.speechStart = null;
+            }
+            cfgSession.textContent = '—';
+            stopDurationTimer();
+            cfgDuration.textContent = '—';
+
+            const botAudio = document.getElementById('botAudio');
+            if (botAudio) botAudio.srcObject = null;
+
+            document.querySelectorAll('audio.pipecat-audio').forEach(el => el.remove());
+            client = null;
+            addEvent('disconnected', 'Session ended');
+            if (restartPending) {
+              restartPending = false;
+              // Show "Connecting…" through the gap so the restart doesn't
+              // read as a dropped call
+              setConnectState('connecting');
+              setTimeout(handleConnect, 600);   // reconnect with the same config
+            }
+          },
+          onMetrics: (data) => {
+            accumulateMetrics(usage, data);
+            renderMetrics();
+            updateSoloBotMeta();
+          },
+          onError: (msg) => {
+            const detail = typeof msg === 'string' ? msg : JSON.stringify(msg?.data ?? msg);
+            addEvent('error', `Pipeline: ${detail}`);
+            addMessage('bot', `⚠ Pipeline error: ${detail}`, viewAudio);
+          },
+          onUserTranscript: (data) => {
+            if (data?.text && data.final !== false) {
+              appendTranscript('user', data.text);
+              addEvent('transcript', `User: ${data.text}`);
+            }
+          },
+          onBotTranscript: (data) => {
+            if (data?.text) {
+              appendTranscript('bot', data.text);
+              addEvent('transcript', `Bot: ${data.text}`);
+            }
+          },
+          onTrackStarted: (track, participant) => {
+            if (track.kind !== "audio") return;
+            // The SDK fires this for the local mic track too — attaching that
+            // to the speaker element would silence (or echo) the bot.
+            if (participant?.local) {
+              addEvent('media', 'Local mic track started (ignored for playback)');
+              return;
+            }
+            addEvent('media', 'Remote audio track started');
+            const botAudio = document.getElementById('botAudio');
+            if (botAudio) {
+              const stream = new MediaStream([track]);
+              botAudio.srcObject = stream;
+              botAudio.play()
+                .then(() => addEvent('media', 'Bot audio playback started'))
+                .catch(e => {
+                  addEvent('error', `Audio playback failed: ${e.message}`);
+                  showToast(`Audio playback failed: ${e.message}`, 'error');
+                });
+              attachVisualizer(stream);
+            }
+          },
+          onUserStoppedSpeaking: () => {
+            addEvent('audio', 'User stopped speaking');
+            userStoppedTime = Date.now();
+            setVadActive(false);
+            if (usage.speechStart) {
+              usage.speechMs += Date.now() - usage.speechStart;
+              usage.speechStart = null;
+            }
+          },
+          onBotStartedSpeaking: () => {
+            addEvent('audio', 'Bot started speaking');
+            if (userStoppedTime) {
+              usage.turnLatencyMs = Date.now() - userStoppedTime;
+              userStoppedTime = null;
+              renderMetrics();
+              updateSoloBotMeta();
+            }
+          },
+          onBotStoppedSpeaking: () => {
+            addEvent('audio', 'Bot stopped speaking');
+            soloBotTurnsDone += 1;
+            curBotContent = null;   // spoken turn done — next reply gets its own bubble
+            if (soloBotTurnResolve) { soloBotTurnResolve(); soloBotTurnResolve = null; }
+          },
+          onUserStartedSpeaking: () => {
+            addEvent('audio', 'User started speaking');
+            usage.speechStart = Date.now();
+            setVadActive(true);
+            curBotContent = null;   // next bot transcript starts a fresh bubble
+          },
+        }
+      });
+
+      // Nest the payload inside "body" as expected by FastAPI runner's /start route
+      await client.startBotAndConnect({
+        endpoint: "/start",
+        requestData: {
+          body: configData
+        }
+      });
+
+    } catch (err) {
+      console.error("Connection failed:", err);
+      addEvent('error', `Connection failed: ${err.message}`);
+      showToast(`Connection failed: ${err.message}`, 'error');
+      setConnectState('idle');
+      setStatus(stClient, false);
+      setStatus(stAgent, false);
+      btnConnect.disabled = false;
+      lockSelectors(false);
+      client = null;
+    }
+  }
+
+  btnConnect.addEventListener('click', handleConnect);
+
+  // ── Mic mute toggle (solo) ─────────────────────────
+  const btnMic = document.getElementById('btnMic');
+  const btnMicLabel = document.getElementById('btnMicLabel');
+  let micMuted = false;
+
+  function setMicUI(muted) {
+    micMuted = muted;
+    btnMic.classList.toggle('muted', muted);
+    btnMicLabel.textContent = muted ? 'Muted' : 'Mute';
+    btnMic.title = muted ? 'Unmute your microphone' : 'Mute your microphone';
+  }
+
+  function resetMic() {
+    setMicUI(false);
+    btnMic.classList.remove('visible');
+  }
+
+  btnMic.addEventListener('click', () => {
+    if (!client || !isConnected) return;
+    const mute = !micMuted;
+    try {
+      client.enableMic(!mute);
+      setMicUI(mute);
+      micVisualizer.classList.toggle('muted', mute);
+      addEvent('audio', mute ? 'Microphone muted' : 'Microphone unmuted');
+    } catch (e) {
+      addEvent('error', `Mic toggle failed: ${e.message}`);
+    }
+  });
+
+  // ── Text chat history for direct LLM mode ──────────
+  let chatHistory = [];
+
+  // ── Solo message sending (used by input box AND the simulator) ──
+
+  // Direct HTTP chat with the selected LLM (Test LLM tab)
+  async function sendChatMessage(text) {
+    addMessage('user', text, viewLLM);
+    const llmLabel = labelOf(selLLM);   // frozen at send time for the meta line
+
+    // Pending bubble with a typing indicator; filled in when the reply lands
+    const botEl = addMessage('bot', '', viewLLM);
+    botEl.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
+
+    stClient.textContent = 'Sending...';
+    stClient.className = 'value neutral';
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: chatHistory,
+          llm: selLLM.value,
+          language: selLanguage.value,
+          scenario: selScenario.value,
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        botEl.textContent = data.content;
+
+        if (!data.error) {
+          // Real usage + latency from the server
+          const u = data.usage || {};
+          usage.promptTokens += u.prompt_tokens || 0;
+          usage.completionTokens += u.completion_tokens || 0;
+          if (data.latency_ms != null) {
+            usage.turnLatencyMs = data.latency_ms;
+            usage.ttfb.llm = data.latency_ms / 1000;
+          }
+          renderMetrics();
+
+          // Per-message metrics: exact usage for this one exchange
+          const msgTok = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
+          const r = ratesFor(selSTT.value, selTTS.value, selLLM.value);
+          const msgCost = ((u.prompt_tokens || 0) * r.llm.in_per_1m
+                         + (u.completion_tokens || 0) * r.llm.out_per_1m) / 1e6;
+          setMsgMeta(botEl, [
+            llmLabel,
+            data.latency_ms != null ? data.latency_ms + 'ms' : null,
+            tokStr(u.prompt_tokens || 0, u.completion_tokens || 0),
+            llmRateStr(selLLM.value),
+          ], msgCost);
+
+          chatHistory.push({ role: 'user', content: text });
+          chatHistory.push({ role: 'assistant', content: data.content });
+        }
+      } else {
+        const errMsg = await response.text();
+        botEl.textContent = `Error from backend chat API: ${errMsg}`;
+      }
+    } catch (err) {
+      console.error("Direct chat failed:", err);
+      botEl.textContent = `Failed to connect to backend: ${err.message}`;
+    } finally {
+      stClient.textContent = isConnected ? 'Connected' : 'Disconnected';
+      stClient.className = `value ${isConnected ? 'connected' : 'disconnected'}`;
+    }
+  }
+
+  // Inject a text turn into the live voice session (Test Audio tab)
+  async function sendVoiceText(text) {
+    if (!isConnected || !client) return;
+    curUserContent = null;
+    curBotContent = null;   // reply to this message starts a fresh bubble
+    addMessage('user', text, viewAudio);
+    addEvent('text', `Sent to bot: ${text}`);
+    try {
+      await client.sendText(text);
+    } catch (e) {
+      console.warn('sendText failed:', e);
+    }
+  }
+
+  // Resolves when the bot finishes speaking its next turn (or on timeout)
+  let soloBotTurnResolve = null;
+  let soloBotTurnsDone = 0;   // completed spoken turns this session (greeting = 1)
+  function waitSoloBotTurn(timeoutMs = 30000) {
+    return new Promise(res => {
+      soloBotTurnResolve = res;
+      setTimeout(res, timeoutMs);
+    });
+  }
+
+  async function sendText() {
+    const text = txtInput.value.trim();
+    if (!text) return;
+    if (activeTab === 'llm') {
+      txtInput.value = '';
+      await sendChatMessage(text);
+    } else if (activeTab === 'audio' && isConnected && client) {
+      txtInput.value = '';
+      await sendVoiceText(text);
+    }
+  }
+
+  btnSend.addEventListener('click', sendText);
+  txtInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendText();
+    }
+  });
+
+  // ── Clear / Restart conversation ───────────────────
+  const btnClear = document.getElementById('btnClear');
+  const btnRestart = document.getElementById('btnRestart');
+  let restartPending = false;
+
+  function clearSoloConversation() {
+    viewAudio.innerHTML = '';
+    viewLLM.innerHTML = '';
+    chatHistory = [];
+    curBotContent = null;
+    curUserContent = null;
+    soloOpenBot = null;
+    // Fresh slate for the meters too: usage, cost, latency, duration
+    resetUsage();
+    if (isConnected) sessionStart = Date.now();   // rebase a live call's clock
+    metricLatency.textContent = '—';
+    tipTotalLatency.textContent = '—';
+    if (!isConnected) {
+      metricDuration.textContent = '—';
+      cfgDuration.textContent = '—';
+    }
+    renderMetrics();
+    addEvent('action', 'Conversation and metrics cleared');
+  }
+  btnClear.addEventListener('click', () => {
+    clearSoloConversation();
+    // Mid-call, the bot's context lives in the server-side session — restart
+    // it so "clear" truly forgets, not just visually
+    if (isConnected && client && !restartPending) {
+      restartPending = true;
+      addEvent('action', 'Context cleared — restarting the call…');
+      showToast('Cleared — restarting the call with fresh context…');
+      client.disconnect();
+    }
+  });
+
+  btnRestart.addEventListener('click', async () => {
+    if (isConnected && client) {
+      // Voice: end the call and reconnect with the same config — a truly
+      // fresh conversation (the bot's context lives server-side per session)
+      clearSoloConversation();
+      restartPending = true;
+      addEvent('action', 'Restarting the call…');
+      await client.disconnect();
+    } else {
+      // Text: clearing the history is a full restart
+      clearSoloConversation();
+      addEvent('action', 'Text conversation restarted');
+    }
+  });
+
+  // ── Simulation: auto-play the scenario's sample conversation ──
+  let simRunning = false;
+  const btnSoloSimulate = document.getElementById('btnSoloSimulate');
+
+  async function runSoloSimulation() {
+    if (simRunning) { simRunning = false; return; }
+    const turns = sampleFor(selScenario.value);
+    if (!turns.length) { addEvent('simulate', 'No sample conversation for this scenario'); return; }
+
+    // Simulation runs in the mode it was started from — never switches tabs.
+    const mode = activeTab === 'llm' ? 'text' : 'voice';
+    if (mode === 'voice' && !(isConnected && client)) {
+      addEvent('simulate', 'Connect the voice call first, or switch to Test LLM for a text simulation');
+      addMessage('bot', 'To simulate a voice conversation, press Connect first. For a text simulation, switch to the Test LLM tab.', viewAudio);
+      return;
+    }
+
+    simRunning = true;
+    btnSoloSimulate.textContent = '■ Stop';
+    addEvent('simulate', `Playing ${turns.length}-turn sample for ${labelOf(selScenario)} (${mode})`);
+
+    // Let the bot finish its greeting before the first simulated turn,
+    // otherwise the conversation starts out of order.
+    if (mode === 'voice' && soloBotTurnsDone === 0) {
+      addEvent('simulate', 'Waiting for the greeting to finish…');
+      await waitSoloBotTurn(20000);
+    }
+
+    for (const t of turns) {
+      if (!simRunning) break;
+      if (mode === 'voice') {
+        if (!(isConnected && client)) break;   // call ended mid-simulation
+        await sendVoiceText(t);
+        await waitSoloBotTurn();     // let the bot finish speaking before the next turn
+      } else {
+        await sendChatMessage(t);
+      }
+      await sleep(800);
+    }
+
+    simRunning = false;
+    btnSoloSimulate.textContent = '▶ Simulate';
+    addEvent('simulate', 'Simulation finished');
+  }
+  btnSoloSimulate.addEventListener('click', runSoloSimulation);
+
+  // ═══════════════════════════════════════════════════
+  // Split view: two live agents side by side
+  // ═══════════════════════════════════════════════════
+
+  const PANE_TEMPLATE = `
+    <audio class="p-audio" autoplay style="display:none;"></audio>
+    <div class="pane-config">
+      <span class="pane-name"></span>
+      <div class="selector-pill"><select class="p-scenario"></select></div>
+      <div class="selector-pill"><select class="p-llm"></select></div>
+      <div class="selector-pill"><select class="p-stt"></select></div>
+      <div class="selector-pill"><select class="p-tts"></select></div>
+      <div class="selector-pill"><select class="p-voice"></select></div>
+      <div class="selector-pill"><select class="p-lang"></select></div>
+      <button class="btn-connect idle sm p-connect"><span class="dot"></span>Connect</button>
+      <button class="btn-ghost p-mute" title="Mute this agent's audio">🔊</button>
+    </div>
+    <div class="pane-metrics">
+      <div class="metric-item tooltip-trigger">Cost <span class="m-val p-cost">—</span>
+        <div class="metric-tooltip">
+          <div class="tooltip-title">Session Cost</div>
+          <div class="tooltip-row"><span>STT</span><span class="p-cost-stt">—</span></div>
+          <div class="tooltip-row"><span>LLM</span><span class="p-cost-llm">—</span></div>
+          <div class="tooltip-row"><span>TTS</span><span class="p-cost-tts">—</span></div>
+          <div class="tooltip-divider"></div>
+          <div class="tooltip-row"><span>Effective rate</span><span class="p-cost-min">—</span></div>
+        </div>
+      </div>
+      <div class="metric-item tooltip-trigger">Latency <span class="m-val p-lat">—</span>
+        <div class="metric-tooltip">
+          <div class="tooltip-title">Voice-to-Voice Latency</div>
+          <div class="tooltip-row"><span>Last turn</span><span class="p-lat-last">—</span></div>
+          <div class="tooltip-row"><span>Average</span><span class="p-lat-avg">—</span></div>
+          <div class="tooltip-divider"></div>
+          <div class="tooltip-row"><span>STT TTFB</span><span class="p-ttfb-stt">—</span></div>
+          <div class="tooltip-row"><span>LLM TTFB</span><span class="p-ttfb-llm">—</span></div>
+          <div class="tooltip-row"><span>TTS TTFB</span><span class="p-ttfb-tts">—</span></div>
+        </div>
+      </div>
+      <div class="metric-item tooltip-trigger">Tokens <span class="m-val p-tok">0</span>
+        <div class="metric-tooltip">
+          <div class="tooltip-title">LLM Token Usage</div>
+          <div class="tooltip-row"><span>Prompt</span><span class="p-tok-in">0</span></div>
+          <div class="tooltip-row"><span>Completion</span><span class="p-tok-out">0</span></div>
+          <div class="tooltip-row"><span>TTS characters</span><span class="p-tts-chars">0</span></div>
+        </div>
+      </div>
+      <span class="pane-dur">Duration <span class="p-dur">—</span></span>
+    </div>
+    <div class="pane-msgs">
+      <div class="empty-state">
+        <div class="icon">🎙️</div>
+        <p>Type below to text-chat with both configs at once, or press <strong>Connect</strong> for live voice — speak once and both agents hear you.</p>
+      </div>
+    </div>
+  `;
+
+  function createPane(root, name) {
+    root.innerHTML = PANE_TEMPLATE;
+    const $ = (q) => root.querySelector(q);
+    $('.pane-name').textContent = name;
+
+    const els = {
+      scenario: $('.p-scenario'), llm: $('.p-llm'), stt: $('.p-stt'),
+      tts: $('.p-tts'), voice: $('.p-voice'), lang: $('.p-lang'),
+      connect: $('.p-connect'), mute: $('.p-mute'), audio: $('.p-audio'),
+      msgs: $('.pane-msgs'), dur: $('.p-dur'),
+      cost: $('.p-cost'), costStt: $('.p-cost-stt'), costLlm: $('.p-cost-llm'),
+      costTts: $('.p-cost-tts'), costMin: $('.p-cost-min'),
+      lat: $('.p-lat'), latLast: $('.p-lat-last'), latAvg: $('.p-lat-avg'),
+      ttfbStt: $('.p-ttfb-stt'), ttfbLlm: $('.p-ttfb-llm'), ttfbTts: $('.p-ttfb-tts'),
+      tok: $('.p-tok'), tokIn: $('.p-tok-in'), tokOut: $('.p-tok-out'),
+      ttsChars: $('.p-tts-chars'),
+    };
+
+    const pane = {
+      name,
+      client: null,
+      connected: false,
+      startMs: null,
+      timer: null,
+      turnLats: [],
+      stopTime: null,
+      curBot: null,
+      curUser: null,
+      usage: null,
+      chatHistory: [],
+      openBot: null,   // per-turn baseline for the currently-open bot bubble
+      sessionLLM: null,     // LLM label frozen at connect time
+      botTurnResolve: null, // resolves when the bot finishes its spoken turn
+      botTurnsDone: 0,      // completed spoken turns this session (greeting = 1)
+
+      resetUsage() {
+        this.usage = {
+          promptTokens: 0, completionTokens: 0, ttsChars: 0,
+          speechMs: 0, speechStart: null,
+          ttfb: { stt: null, llm: null, tts: null }, turnLatencyMs: null,
+        };
+        this.turnLats = [];
+        this.stopTime = null;
+      },
+
+      fillOptions() {
+        // Mirror the solo selects (they hold /api/config data or static fallbacks)
+        const firstFill = !els.llm.options.length;
+        const copy = (dst, src) => { const v = dst.value; dst.innerHTML = src.innerHTML; if (v) dst.value = v; };
+        copy(els.scenario, selScenario);
+        copy(els.llm, selLLM);
+        copy(els.stt, selSTT);
+        copy(els.tts, selTTS);
+        // First fill: adopt the configured defaults rather than first options
+        if (firstFill) {
+          for (const [el, def] of [[els.llm, CONFIG.default_llm],
+                                   [els.stt, CONFIG.default_stt],
+                                   [els.tts, CONFIG.default_tts]]) {
+            if (def) el.value = def;
+            if (el.selectedIndex < 0) el.selectedIndex = 0;
+          }
+        }
+        this.fillLanguages();
+        this.updateRealtimeUI();
+      },
+
+      fillLanguages() {
+        // Pane-local filter: this pane's provider combo, not solo's
+        const prev = els.lang.value;
+        fillSelect(els.lang,
+          allowedLanguages(els.llm.value, els.stt.value, els.tts.value), prev);
+        els.lang.title = isRealtimeLLM(els.llm.value)
+          ? `Languages supported by ${labelOf(els.llm)}`
+          : `Languages supported by both ${labelOf(els.stt)} (STT) and ${labelOf(els.tts)} (TTS)`;
+        if (prev && els.lang.value !== prev) {
+          showToast(
+            `Pane ${name}: ${langLabelOf(prev)} isn't supported by this STT/TTS combo — ` +
+            `language set to ${langLabelOf(els.lang.value)}`);
+        }
+      },
+
+      fillVoices() {
+        const key = isRealtimeLLM(els.llm.value) ? els.llm.value : els.tts.value;
+        const voices = CONFIG.voices[key] || [];
+        if (voices.length) {
+          fillSelect(els.voice, voices, els.voice.value);
+        } else {
+          els.voice.innerHTML = selVoice.innerHTML;
+        }
+      },
+
+      updateRealtimeUI() {
+        const rt = isRealtimeLLM(els.llm.value);
+        if (!this.connected) {
+          els.stt.disabled = rt;
+          els.tts.disabled = rt;
+        }
+        this.fillVoices();
+        this.fillLanguages();
+      },
+
+      scenarioValue() {
+        return els.scenario.value;
+      },
+
+      lock(locked) {
+        [els.scenario, els.llm, els.stt, els.tts, els.voice, els.lang]
+          .forEach(s => s.disabled = locked);
+        if (!locked) this.updateRealtimeUI();
+      },
+
+      setConnectState(state) {
+        els.connect.className = `btn-connect ${state} sm p-connect`;
+        els.connect.innerHTML = state === 'idle' ? '<span class="dot"></span>Connect'
+          : state === 'connecting' ? '<span class="dot"></span>Connecting…'
+          : '<span class="dot"></span>Disconnect';
+      },
+
+      addMsg(sender, text) {
+        const empty = els.msgs.querySelector('.empty-state');
+        if (empty) empty.remove();
+        const div = document.createElement('div');
+        div.className = `msg ${sender}`;
+        div.innerHTML = `
+          <div class="msg-label">${sender === 'user' ? 'You' : 'Agent ' + name}</div>
+          <div class="msg-content"></div>
+          <div class="timestamp">${timeStr()}</div>
+        `;
+        div.querySelector('.msg-content').textContent = text;
+        els.msgs.appendChild(div);
+        els.msgs.scrollTop = els.msgs.scrollHeight;
+        return div.querySelector('.msg-content');
+      },
+
+      currentCostTotal() {
+        return costsFrom(
+          ratesFor(els.stt.value, els.tts.value, els.llm.value), this.usage, this.startMs
+        ).total;
+      },
+
+      updateBotMeta() {
+        if (!this.openBot) return;
+        const p = this.usage.promptTokens - this.openBot.basePrompt;
+        const c = this.usage.completionTokens - this.openBot.baseCompletion;
+        const cost = Math.max(0, this.currentCostTotal() - this.openBot.baseCost);
+        setMsgMeta(this.openBot.el, [
+          this.sessionLLM,
+          this.usage.turnLatencyMs != null ? this.usage.turnLatencyMs + 'ms' : null,
+          tokStr(p, c),
+          llmRateStr(els.llm.value),
+        ], cost);
+      },
+
+      appendTranscript(sender, text) {
+        if (sender === 'bot') {
+          this.curUser = null;
+          if (this.curBot) this.curBot.textContent += ' ' + text;
+          else {
+            this.curBot = this.addMsg('bot', text);
+            this.openBot = {
+              el: this.curBot,
+              basePrompt: this.usage.promptTokens,
+              baseCompletion: this.usage.completionTokens,
+              baseCost: this.currentCostTotal(),
+            };
+            this.updateBotMeta();
+          }
+        } else {
+          this.curBot = null;
+          if (this.curUser) this.curUser.textContent += ' ' + text;
+          else {
+            this.curUser = this.addMsg('user', text);
+            this.openBot = null;   // bot turn finished; its meta line is final
+          }
+        }
+        els.msgs.scrollTop = els.msgs.scrollHeight;
+      },
+
+      renderMetrics() {
+        if (!this.usage) return;
+        const u = this.usage;
+        const r = ratesFor(els.stt.value, els.tts.value, els.llm.value);
+        const c = costsFrom(r, u, this.startMs);
+        els.cost.textContent = fmtMoney(c.total);
+        els.costStt.textContent = fmtMoney(c.sttCost);
+        els.costLlm.textContent = fmtMoney(c.llmCost);
+        els.costTts.textContent = fmtMoney(c.ttsCost);
+        els.costMin.textContent = c.elapsedMin > 0.05
+          ? fmtMoney(c.total / c.elapsedMin) + '/min' : '—';
+
+        const totalTok = u.promptTokens + u.completionTokens;
+        els.tok.textContent = totalTok.toLocaleString();
+        els.tokIn.textContent = u.promptTokens.toLocaleString();
+        els.tokOut.textContent = u.completionTokens.toLocaleString();
+        els.ttsChars.textContent = u.ttsChars.toLocaleString();
+
+        const ms = (s) => s == null ? '—' : Math.round(s * 1000) + 'ms';
+        els.ttfbStt.textContent = ms(u.ttfb.stt);
+        els.ttfbLlm.textContent = ms(u.ttfb.llm);
+        els.ttfbTts.textContent = ms(u.ttfb.tts);
+        if (u.turnLatencyMs != null) {
+          els.lat.textContent = u.turnLatencyMs + 'ms';
+          els.latLast.textContent = u.turnLatencyMs + 'ms';
+        }
+        els.latAvg.textContent = this.turnLats.length
+          ? Math.round(this.turnLats.reduce((a, b) => a + b, 0) / this.turnLats.length) + 'ms'
+          : '—';
+      },
+
+      async toggleConnect() {
+        els.audio.play().catch(() => {});
+        if (this.connected) {
+          this.setConnectState('connecting');
+          if (this.client) await this.client.disconnect();
+          return;
+        }
+
+        els.connect.disabled = true;
+        this.lock(true);
+        this.setConnectState('connecting');
+
+        const configData = {
+          scenario: els.scenario.value || 'generic',
+          llm: els.llm.value || 'google',
+          stt: els.stt.value || 'sarvam',
+          tts: els.tts.value || 'sarvam',
+          voice: els.voice.value || 'aditya',
+          language: els.lang.value || 'en-IN',
+        };
+
+        this.resetUsage();
+        this.curBot = null;
+        this.curUser = null;
+        this.openBot = null;
+        this.botTurnsDone = 0;
+        this.sessionLLM = els.llm.options[els.llm.selectedIndex]?.text || null;
+        els.lat.textContent = '—';
+        this.renderMetrics();
+
+        const self = this;
+        try {
+          const transport = new SmallWebRTCTransport({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+          });
+          this.client = new PipecatClient({
+            transport,
+            enableMic: true,
+            enableCam: false,
+            callbacks: {
+              onConnected: () => {
+                self.connected = true;
+                self.setConnectState('connected');
+                els.connect.disabled = false;
+                self.startMs = Date.now();
+                self.timer = setInterval(() => {
+                  const sec = Math.floor((Date.now() - self.startMs) / 1000);
+                  els.dur.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+                  self.renderMetrics();
+                }, 1000);
+                addEvent('connected', `Pane ${name}: LLM=${configData.llm} STT=${configData.stt} TTS=${configData.tts} Lang=${configData.language}`);
+                updateSplitControls();
+              },
+              onDisconnected: () => {
+                self.connected = false;
+                self.setConnectState('idle');
+                els.connect.disabled = false;
+                self.lock(false);
+                clearInterval(self.timer);
+                self.timer = null;
+                self.startMs = null;
+                els.dur.textContent = '—';
+                els.audio.srcObject = null;
+                self.client = null;
+                if (self.botTurnResolve) { self.botTurnResolve(); self.botTurnResolve = null; }
+                addEvent('disconnected', `Pane ${name}: session ended`);
+                updateSplitControls();
+              },
+              onMetrics: (data) => {
+                accumulateMetrics(self.usage, data);
+                self.renderMetrics();
+                self.updateBotMeta();
+              },
+              onError: (msg) => {
+                const detail = typeof msg === 'string' ? msg : JSON.stringify(msg?.data ?? msg);
+                addEvent('error', `Pane ${name} pipeline: ${detail}`);
+                self.curBot = null;
+                self.addMsg('bot', `⚠ Pipeline error: ${detail}`);
+                self.curBot = null;
+              },
+              onUserTranscript: (data) => {
+                if (data?.text && data.final !== false) self.appendTranscript('user', data.text);
+              },
+              onBotTranscript: (data) => {
+                if (data?.text) self.appendTranscript('bot', data.text);
+              },
+              onTrackStarted: (track, participant) => {
+                if (track.kind !== 'audio') return;
+                if (participant?.local) return;   // never route the mic to the speaker
+                els.audio.srcObject = new MediaStream([track]);
+                els.audio.play().catch(() => {});
+              },
+              onUserStoppedSpeaking: () => {
+                self.stopTime = Date.now();
+                if (self.usage.speechStart) {
+                  self.usage.speechMs += Date.now() - self.usage.speechStart;
+                  self.usage.speechStart = null;
+                }
+              },
+              onBotStartedSpeaking: () => {
+                if (self.stopTime) {
+                  self.usage.turnLatencyMs = Date.now() - self.stopTime;
+                  self.turnLats.push(self.usage.turnLatencyMs);
+                  self.stopTime = null;
+                  self.renderMetrics();
+                  self.updateBotMeta();
+                }
+              },
+              onBotStoppedSpeaking: () => {
+                self.botTurnsDone += 1;
+                self.curBot = null;   // spoken turn done — next reply gets its own bubble
+                if (self.botTurnResolve) { self.botTurnResolve(); self.botTurnResolve = null; }
+              },
+              onUserStartedSpeaking: () => {
+                self.curBot = null;
+                self.usage.speechStart = Date.now();
+              },
+            }
+          });
+
+          await this.client.startBotAndConnect({
+            endpoint: "/start",
+            requestData: { body: configData }
+          });
+        } catch (err) {
+          console.error(`Pane ${name} connection failed:`, err);
+          addEvent('error', `Pane ${name} connection failed: ${err.message}`);
+          this.setConnectState('idle');
+          els.connect.disabled = false;
+          this.lock(false);
+          this.client = null;
+        }
+      },
+
+      async sendText(text) {
+        if (this.connected && this.client) {
+          // Live voice session: inject the text as a user turn
+          this.curUser = null;
+          this.curBot = null;   // reply to this message starts a fresh bubble
+          this.addMsg('user', text);
+          try {
+            await this.client.sendText(text);
+          } catch (e) {
+            console.warn(`Pane ${name}: sendText failed`, e);
+          }
+          return;
+        }
+        // Not connected: direct text chat against this pane's LLM
+        await this.textChat(text);
+      },
+
+      // Resolves when this pane's bot finishes speaking (or on timeout)
+      waitBotTurn(timeoutMs = 30000) {
+        const self = this;
+        return new Promise(res => {
+          self.botTurnResolve = res;
+          setTimeout(res, timeoutMs);
+        });
+      },
+
+      // One simulation turn: live voice turn if connected, else text chat
+      async playTurn(text) {
+        if (this.connected && this.client) {
+          // Don't talk over the greeting — wait for it on the first turn
+          if (this.botTurnsDone === 0) await this.waitBotTurn(20000);
+          await this.sendText(text);
+          await this.waitBotTurn();
+        } else {
+          await this.textChat(text);
+        }
+      },
+
+      async textChat(text) {
+        this.curUser = null;
+        this.curBot = null;
+        this.addMsg('user', text);
+        const llmLabel = els.llm.options[els.llm.selectedIndex]?.text || null;
+        try {
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: text,
+              history: this.chatHistory,
+              llm: els.llm.value,
+              language: els.lang.value,
+              scenario: els.scenario.value,
+            }),
+          });
+          if (!response.ok) {
+            this.addMsg('bot', `Error from backend chat API: ${await response.text()}`);
+            return;
+          }
+          const data = await response.json();
+          const botEl = this.addMsg('bot', data.content);
+          if (!data.error) {
+            const u = data.usage || {};
+            this.usage.promptTokens += u.prompt_tokens || 0;
+            this.usage.completionTokens += u.completion_tokens || 0;
+            if (data.latency_ms != null) {
+              this.usage.turnLatencyMs = data.latency_ms;
+              this.turnLats.push(data.latency_ms);
+              this.usage.ttfb.llm = data.latency_ms / 1000;
+            }
+            this.renderMetrics();
+
+            // Per-message metrics: exact usage for this one exchange
+            const msgTok = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
+            const r = ratesFor(els.stt.value, els.tts.value, els.llm.value);
+            const msgCost = ((u.prompt_tokens || 0) * r.llm.in_per_1m
+                           + (u.completion_tokens || 0) * r.llm.out_per_1m) / 1e6;
+            setMsgMeta(botEl, [
+              llmLabel,
+              data.latency_ms != null ? data.latency_ms + 'ms' : null,
+              tokStr(u.prompt_tokens || 0, u.completion_tokens || 0),
+              llmRateStr(els.llm.value),
+            ], msgCost);
+
+            this.chatHistory.push({ role: 'user', content: text });
+            this.chatHistory.push({ role: 'assistant', content: data.content });
+          }
+        } catch (err) {
+          this.addMsg('bot', `Failed to reach backend: ${err.message}`);
+        }
+      },
+
+      async disconnect() {
+        if (this.connected && this.client) await this.client.disconnect();
+      },
+
+      clearChat() {
+        els.msgs.innerHTML = '';
+        this.chatHistory = [];
+        this.curBot = null;
+        this.curUser = null;
+        this.openBot = null;
+        // Metrics reset with the conversation (mirrors the Solo Clear)
+        this.resetUsage();
+        if (this.connected) this.startMs = Date.now();  // rebase live-call clock
+        this.renderMetrics();
+      },
+    };
+
+    pane.resetUsage();
+    els.connect.addEventListener('click', () => pane.toggleConnect());
+    els.tts.addEventListener('change', () => { pane.fillVoices(); pane.fillLanguages(); });
+    els.stt.addEventListener('change', () => pane.fillLanguages());
+    els.llm.addEventListener('change', () => pane.updateRealtimeUI());
+    // Persona or model swap mid-chat would confuse the LLM — start fresh
+    [els.scenario, els.llm].forEach(sel =>
+      sel.addEventListener('change', () => { pane.chatHistory = []; }));
+    els.mute.addEventListener('click', () => {
+      els.audio.muted = !els.audio.muted;
+      els.mute.textContent = els.audio.muted ? '🔇' : '🔊';
+    });
+
+    return pane;
+  }
+
+  const panes = [
+    createPane(document.querySelector('.pane[data-pane="A"]'), 'A'),
+    createPane(document.querySelector('.pane[data-pane="B"]'), 'B'),
+  ];
+
+  // Shared input: broadcast to every connected pane
+  function splitSendText() {
+    const text = splitInput.value.trim();
+    if (!text) return;
+    splitInput.value = '';
+    panes.forEach(p => p.sendText(text));
+  }
+  splitSend.addEventListener('click', splitSendText);
+  splitInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      splitSendText();
+    }
+  });
+
+  // ── Joint call controls + simulation (Compare mode) ──
+  const btnBothConnect = document.getElementById('btnBothConnect');
+  const btnSimulate = document.getElementById('btnSimulate');
+  const btnSplitClear = document.getElementById('btnSplitClear');
+
+  btnSplitClear.addEventListener('click', () => {
+    panes.forEach(p => {
+      p.clearChat();
+      // Live sessions keep context server-side — reconnect to truly forget
+      if (p.connected) {
+        p.disconnect();
+        setTimeout(() => { if (!p.connected) p.toggleConnect(); }, 800);
+      }
+    });
+    addEvent('action', 'Both panes cleared (conversation, context, metrics)');
+  });
+
+  function updateSplitControls() {
+    btnBothConnect.textContent = panes.every(p => p.connected) ? 'End both' : 'Connect both';
+  }
+
+  btnBothConnect.addEventListener('click', () => {
+    if (panes.every(p => p.connected)) {
+      panes.forEach(p => p.disconnect());
+    } else {
+      panes.filter(p => !p.connected).forEach(p => p.toggleConnect());
+    }
+  });
+
+  async function runSplitSimulation() {
+    if (simRunning) { simRunning = false; return; }
+    const turns = sampleFor(panes[0].scenarioValue());
+    if (!turns.length) { addEvent('simulate', 'No sample conversation for pane A scenario'); return; }
+
+    simRunning = true;
+    btnSimulate.textContent = '■ Stop';
+    addEvent('simulate', `Playing ${turns.length}-turn sample on both agents`);
+
+    for (const t of turns) {
+      if (!simRunning) break;
+      // Each turn plays on both panes in parallel; waits for both to finish
+      await Promise.all(panes.map(p => p.playTurn(t)));
+      await sleep(800);
+    }
+
+    simRunning = false;
+    btnSimulate.textContent = '▶ Simulate';
+    addEvent('simulate', 'Simulation finished');
+  }
+  btnSimulate.addEventListener('click', runSplitSimulation);
+
+  // ── View toggle (Solo ⇄ Compare) ───────────────────
+  function setView(v) {
+    activeView = v;
+    viewToggle.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', b.dataset.view === v));
+    soloMain.style.display = v === 'solo' ? '' : 'none';
+    splitMain.style.display = v === 'split' ? '' : 'none';
+    document.querySelectorAll('.toolbar .solo-only, .config-bar').forEach(el =>
+      el.style.display = v === 'solo' ? '' : 'none');
+
+    if (v === 'split') {
+      // Leaving solo: end its live session so agents don't talk over each other
+      if (isConnected && client) client.disconnect();
+    } else {
+      // Leaving split: end both pane sessions
+      panes.forEach(p => p.disconnect());
+    }
+  }
+  viewToggle.querySelectorAll('button').forEach(btn =>
+    btn.addEventListener('click', () => setView(btn.dataset.view)));
+
+  // ── Init ───────────────────────────────────────────
+  loadConfig();
+
+</script>
+
+</body>
+</html>
