@@ -1289,7 +1289,14 @@
       const res = await fetch('/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transport: 'daily', createDailyRoom: true, body: configData })
+        body: JSON.stringify({
+          transport: 'daily',
+          createDailyRoom: true,
+          // Daily rooms default to P2P for 1:1 calls; a server-side bot
+          // needs SFU topology from the first join (0.5 = always SFU).
+          dailyRoomProperties: { sfu_switchover: 0.5 },
+          body: configData
+        })
       });
       if (!res.ok) throw new Error(`/start failed (${res.status}): ${await res.text()}`);
       const data = await res.json();
