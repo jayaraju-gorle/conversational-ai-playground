@@ -84,9 +84,42 @@ conversational-ai-playground/
 | `POST /api/chat` | Direct text chat (returns content + real token usage + latency) |
 | `POST /start` | Start a voice session (Pipecat runner; body carries the selected config) |
 
+## Production deployment (GCE VM)
+
+The playground is served from a GCE VM — **https://35-234-215-193.sslip.io** — because
+WebRTC voice media (UDP) cannot leave Cloud Run, which this project originally deployed to.
+
+| Item | Value |
+|---|---|
+| GCP project | `gen-lang-client-0981591737` |
+| VM | `playground-vm` (e2-small, zone `asia-south1-a`) |
+| Static IP | `playground-ip` = `35.234.215.193` (regional, `asia-south1`) |
+| URL | `https://35-234-215-193.sslip.io` (Caddy auto-HTTPS via Let's Encrypt; sslip.io resolves the hostname to the IP) |
+| App stack | `/opt/app/docker-compose.yml` on the VM: `app` (image from Artifact Registry) + `caddy` (TLS on 80/443) |
+| Env vars | `/opt/app/.env` on the VM |
+| Firewall | `playground-web` (tcp 80/443, target tag `playground`) |
+
+**CI/CD**: pushing to `main` runs `.github/workflows/deploy.yml`, which builds the image
+with Cloud Build and pushes `:latest` + `:<sha>` to Artifact Registry
+(`asia-south1-docker.pkg.dev/gen-lang-client-0981591737/cloud-run-apps/conversational-ai-playground`).
+On the VM, a systemd timer (`deploy.timer` → `/opt/app/deploy.sh`) polls the registry every
+2 minutes and redeploys when `:latest` changes (log: `/var/log/playground-deploy.log`).
+
+Useful commands:
+
+```bash
+# SSH into the VM
+gcloud compute ssh playground-vm --project gen-lang-client-0981591737 --zone asia-south1-a
+
+# App logs / status / manual redeploy (on the VM)
+sudo docker logs -f app-app-1
+sudo docker compose -f /opt/app/docker-compose.yml ps
+sudo /opt/app/deploy.sh
+```
+
 ## Deploying to Pipecat Cloud
 
-This project is configured for deployment to Pipecat Cloud. See the [Pipecat Cloud Documentation](https://docs.pipecat.ai/deployment/pipecat-cloud/introduction) to learn about configuring, deploying, and managing agents.
+This project is also configured for deployment to Pipecat Cloud. See the [Pipecat Cloud Documentation](https://docs.pipecat.ai/deployment/pipecat-cloud/introduction) to learn about configuring, deploying, and managing agents.
 
 ## Building with an AI coding agent
 

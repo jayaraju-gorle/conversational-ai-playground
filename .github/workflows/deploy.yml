@@ -1,4 +1,13 @@
-name: Deploy to Cloud Run
+name: Build and publish image
+
+# Builds the app image and pushes it to Artifact Registry. The playground VM
+# (playground-vm, asia-south1-a) polls the registry every 2 minutes via a
+# systemd timer (/etc/systemd/system/deploy.timer) and redeploys :latest
+# automatically — no deploy step is needed here.
+#
+# Serving: https://35-234-215-193.sslip.io (Caddy on the VM, static IP
+# playground-ip). The old Cloud Run service was decommissioned 2026-07-11
+# because Cloud Run has no UDP egress, which broke WebRTC voice media.
 
 on:
   push:
@@ -20,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,17 +48,3 @@ jobs:
             --project "$PROJECT_ID" \
             --config cloudbuild.yaml \
             --substitutions "_TAG=${{ github.sha }},_REGION=$REGION,_REPO=$REPO,_SERVICE=$SERVICE"
-
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy "$SERVICE" \
-            --project "$PROJECT_ID" \
-            --region "$REGION" \
-            --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$SERVICE:${{ github.sha }}" \
-            --quiet
-
-      - name: Show service URL
-        run: |
-          gcloud run services describe "$SERVICE" \
-            --project "$PROJECT_ID" --region "$REGION" \
-            --format "value(status.url)"
