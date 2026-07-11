@@ -650,7 +650,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                     "models/gemini-2.5-flash-native-audio-latest",
                 ),
                 voice=live_voice,
-                language=language,
+                # No explicit language: native-audio Live models reject most
+                # language codes at connect (e.g. 1007 "Unsupported language
+                # code 'en-IN'") and auto-detect instead; the system
+                # instruction already fixes the conversation language.
                 system_instruction=system_instruction,
             ),
         )
@@ -786,15 +789,28 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         observers=[],
     )
 
-    @worker.rtvi.event_handler("on_client_ready")
-    async def on_client_ready(rtvi):
-        # Kick off the conversation
+    # Greet on whichever fires first. Over Daily this must be
+    # on_client_connected: the JS Daily transport only sends RTVI
+    # client-ready after it hears playable bot audio, and the bot sends no
+    # audio until its first TTS output — waiting on client-ready deadlocks.
+    greeted = False
+
+    async def greet_once():
+        nonlocal greeted
+        if greeted:
+            return
+        greeted = True
         context.add_message({"role": "developer", "content": scenario["greeting"]})
         await worker.queue_frames([LLMRunFrame()])
+
+    @worker.rtvi.event_handler("on_client_ready")
+    async def on_client_ready(rtvi):
+        await greet_once()
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info("Client connected")
+        await greet_once()
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
