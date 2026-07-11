@@ -15,6 +15,7 @@ Run the bot using::
     uv run bot.py
 """
 
+import asyncio
 import os
 import time
 
@@ -52,13 +53,6 @@ from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import BaseTransport, TransportParams
-
-try:
-    from pipecat.transports.daily.transport import DailyParams
-    HAS_DAILY = True
-except ImportError:
-    HAS_DAILY = False
-    DailyParams = None
 from pipecat.workers.runner import WorkerRunner
 
 load_dotenv(override=True)
@@ -637,18 +631,53 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 ),
             )
 
+    # Set when a realtime provider fails its pre-flight connect; surfaced to
+    # the client as an RTVI error once it's connected (instead of dead air).
+    realtime_error: str | None = None
+
     if llm_provider == "gemini-live":
         live_voice = body.get("voice") or "Puck"
         if live_voice not in GEMINI_LIVE_VOICES:
             live_voice = "Puck"
+        live_model = os.getenv(
+            "GEMINI_LIVE_MODEL", "models/gemini-2.5-flash-native-audio-latest"
+        )
         logger.info(f"Using Gemini Live voice: {live_voice}")
+        # Pre-flight the Live websocket. A connect-time rejection (e.g. 1008
+        # "Your project has been denied access" on API keys whose project has
+        # no Live API entitlement) dies inside the service's background
+        # connection task without pushing an ErrorFrame, so without this
+        # check the client sits on a "connected" call hearing silence.
+        # NOTE: free-tier Live access is rate-limited and 1008 also shows up
+        # as load shedding; the probe costs one extra session against that
+        # quota — GEMINI_LIVE_PREFLIGHT=0 skips it (paid-tier keys don't care).
+        if os.getenv("GEMINI_LIVE_PREFLIGHT", "1") not in ("0", "false"):
+            try:
+                from google import genai as _genai
+
+                _probe = _genai.Client(
+                    api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+                )
+
+                async def _probe_connect():
+                    async with _probe.aio.live.connect(
+                        model=live_model, config={"response_modalities": ["AUDIO"]}
+                    ):
+                        pass
+
+                await asyncio.wait_for(_probe_connect(), timeout=10)
+            except Exception as e:
+                realtime_error = (
+                    f"Gemini Live connection failed: {e} — free-tier Live access"
+                    " is rate-limited and intermittently sheds sessions with this"
+                    " error; retry in a bit, or use an API key from a paid-tier /"
+                    " billing-enabled project for reliable access."
+                )
+                logger.error(realtime_error)
         llm = GeminiLiveLLMService(
             api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
             settings=GeminiLiveLLMService.Settings(
-                model=os.getenv(
-                    "GEMINI_LIVE_MODEL",
-                    "models/gemini-2.5-flash-native-audio-latest",
-                ),
+                model=live_model,
                 voice=live_voice,
                 # No explicit language: native-audio Live models reject most
                 # language codes at connect (e.g. 1007 "Unsupported language
@@ -789,10 +818,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         observers=[],
     )
 
-    # Greet on whichever fires first. Over Daily this must be
-    # on_client_connected: the JS Daily transport only sends RTVI
-    # client-ready after it hears playable bot audio, and the bot sends no
-    # audio until its first TTS output — waiting on client-ready deadlocks.
+    # Greet on whichever fires first: the RTVI client-ready handshake or the
+    # transport-level connect. Transports differ in which arrives (or arrives
+    # at all), so waiting on a single event risks a silent start.
     greeted = False
 
     async def greet_once():
@@ -800,6 +828,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         if greeted:
             return
         greeted = True
+        if realtime_error:
+            # Tell the client why there will be no audio, then end the call.
+            await worker.rtvi.send_error(realtime_error)
+            await asyncio.sleep(1)  # let the error message flush to the client
+            await worker.cancel()
+            return
         context.add_message({"role": "developer", "content": scenario["greeting"]})
         await worker.queue_frames([LLMRunFrame()])
 
@@ -840,12 +874,6 @@ async def bot(runner_args: RunnerArguments):
             audio_out_enabled=True,
         ),
     }
-
-    if HAS_DAILY and DailyParams:
-        transport_params["daily"] = lambda: DailyParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-        )
 
     transport = await create_transport(runner_args, transport_params)
 
@@ -987,7 +1015,6 @@ if __name__ == "__main__":
             "usd_inr": usd_inr,
             "fx_source": fx_source,
             "ice_servers": client_ice_servers(),
-            "voice_transport": "daily" if os.getenv("DAILY_API_KEY") else "webrtc",
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────

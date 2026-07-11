@@ -1265,49 +1265,21 @@
   // Import without version pins to guarantee compatibility on esm.sh
   import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js";
   import { SmallWebRTCTransport } from "https://esm.sh/@pipecat-ai/small-webrtc-transport";
-  import { DailyTransport } from "https://esm.sh/@pipecat-ai/daily-transport";
 
-  // Voice transport is chosen by the server (/api/config): "daily" when
-  // DAILY_API_KEY is configured (media flows via Daily's cloud — works behind
-  // hosts without inbound UDP like Cloud Run), else SmallWebRTC peer-to-peer.
+  // Voice runs over SmallWebRTC peer-to-peer; on hosts without direct UDP
+  // the server supplies TURN relays via /api/config's ice_servers.
   function makeVoiceTransport() {
-    const label = document.getElementById('cfgTransport');
-    if (CONFIG.voice_transport === 'daily') {
-      if (label) label.textContent = 'Daily';
-      return new DailyTransport();
-    }
-    if (label) label.textContent = 'Small WebRTC';
     return new SmallWebRTCTransport({
       iceServers: CONFIG.ice_servers || [{ urls: "stun:stun.l.google.com:19302" }]
     });
   }
 
   async function startVoiceBot(client, configData) {
-    if (CONFIG.voice_transport === 'daily') {
-      // The runner's /start returns {dailyRoom, dailyToken}, while
-      // DailyTransport.connect() expects {url, token} — map explicitly.
-      const res = await fetch('/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transport: 'daily',
-          createDailyRoom: true,
-          // Daily rooms default to P2P for 1:1 calls; a server-side bot
-          // needs SFU topology from the first join (0.5 = always SFU).
-          dailyRoomProperties: { sfu_switchover: 0.5 },
-          body: configData
-        })
-      });
-      if (!res.ok) throw new Error(`/start failed (${res.status}): ${await res.text()}`);
-      const data = await res.json();
-      await client.connect({ url: data.dailyRoom, token: data.dailyToken });
-    } else {
-      // Nest the payload inside "body" as expected by FastAPI runner's /start route
-      await client.startBotAndConnect({
-        endpoint: "/start",
-        requestData: { body: configData }
-      });
-    }
+    // Nest the payload inside "body" as expected by FastAPI runner's /start route
+    await client.startBotAndConnect({
+      endpoint: "/start",
+      requestData: { body: configData }
+    });
   }
 
   // ── DOM refs ───────────────────────────────────────
@@ -1458,6 +1430,7 @@
     scenarios: [{ value: 'generic', label: 'General Assistant' }],
     pricing: { stt: {}, tts: {}, llm: {} },
     usd_inr: 88.0,
+    voice_transport: 'webrtc',
   };
 
   // ── Session usage (real, accumulated from pipeline metrics) ──
@@ -1669,14 +1642,16 @@
   }
   selSTT.addEventListener('change', fillLanguages);
 
-  // Disable the STT/TTS selectors when a realtime (S2S) LLM is selected —
-  // they are not part of a realtime pipeline.
+  // Hide the STT/TTS selectors when a realtime (S2S) LLM is selected —
+  // the S2S model does both legs itself, so showing them is misleading.
   function updateSoloRealtimeUI() {
     const rt = isRealtimeLLM(selLLM.value);
     if (!isConnected) {
       selSTT.disabled = rt;
       selTTS.disabled = rt;
     }
+    selSTT.closest('.selector-group').style.display = rt ? 'none' : '';
+    selTTS.closest('.selector-group').style.display = rt ? 'none' : '';
     fillVoices();
     fillLanguages();
   }
@@ -1722,25 +1697,26 @@
   }
 
   function syncConfigDisplay() {
+    const rt = isRealtimeLLM(selLLM.value);
     cfgScenario.textContent = labelOf(selScenario);
     cfgLLM.textContent = labelOf(selLLM);
-    cfgSTT.textContent = labelOf(selSTT);
-    cfgTTS.textContent = labelOf(selTTS);
+    cfgSTT.textContent = rt ? 'Built into S2S' : labelOf(selSTT);
+    cfgTTS.textContent = rt ? 'Built into S2S' : labelOf(selTTS);
     cfgVoice.textContent = labelOf(selVoice);
     cfgLanguage.textContent = labelOf(selLanguage);
 
     jsonDisplay.textContent = JSON.stringify({
       scenario: selScenario.value,
       llm: selLLM.value,
-      stt: selSTT.value,
-      tts: selTTS.value,
+      stt: rt ? null : selSTT.value,
+      tts: rt ? null : selTTS.value,
       voice: selVoice.value,
       language: selLanguage.value,
       currency,
       transport: 'webrtc',
       pricing_usd: {
-        stt: CONFIG.pricing.stt[selSTT.value],
-        tts: CONFIG.pricing.tts[selTTS.value],
+        stt: rt ? null : CONFIG.pricing.stt[selSTT.value],
+        tts: rt ? null : CONFIG.pricing.tts[selTTS.value],
         llm: CONFIG.pricing.llm[selLLM.value],
       },
     }, null, 2);
@@ -2063,6 +2039,8 @@
           },
           onDisconnected: () => {
             isConnected = false;
+            soloBotSpeaking = false;
+            resolveSoloBotTurn();   // don't leave a simulation wait hanging
             setConnectState('idle');
             setStatus(stClient, false);
             setStatus(stAgent, false);
@@ -2151,6 +2129,8 @@
           },
           onBotStartedSpeaking: () => {
             addEvent('audio', 'Bot started speaking');
+            soloBotSpeaking = true;
+            if (soloTurnWait) soloTurnWait.armed = true;
             if (userStoppedTime) {
               usage.turnLatencyMs = Date.now() - userStoppedTime;
               userStoppedTime = null;
@@ -2160,9 +2140,11 @@
           },
           onBotStoppedSpeaking: () => {
             addEvent('audio', 'Bot stopped speaking');
+            soloBotSpeaking = false;
+            soloLastBotStopAt = Date.now();
             soloBotTurnsDone += 1;
             curBotContent = null;   // spoken turn done — next reply gets its own bubble
-            if (soloBotTurnResolve) { soloBotTurnResolve(); soloBotTurnResolve = null; }
+            if (soloTurnWait && soloTurnWait.armed) resolveSoloBotTurn();
           },
           onUserStartedSpeaking: () => {
             addEvent('audio', 'User started speaking');
@@ -2307,14 +2289,35 @@
     }
   }
 
-  // Resolves when the bot finishes speaking its next turn (or on timeout)
-  let soloBotTurnResolve = null;
+  // Resolves when the bot finishes speaking its next turn (or on timeout).
+  // The wait only "arms" once the bot starts speaking after it begins (or was
+  // already mid-speech), so a stale stop event from the previous turn can't
+  // resolve it early — that early resolve made the simulator hang up before
+  // the bot answered the final message.
+  let soloTurnWait = null;        // {armed, resolve}
+  let soloBotSpeaking = false;
+  let soloLastBotStopAt = 0;
   let soloBotTurnsDone = 0;   // completed spoken turns this session (greeting = 1)
   function waitSoloBotTurn(timeoutMs = 30000) {
     return new Promise(res => {
-      soloBotTurnResolve = res;
-      setTimeout(res, timeoutMs);
+      const wait = { armed: soloBotSpeaking, resolve: res };
+      soloTurnWait = wait;
+      setTimeout(() => {
+        if (soloTurnWait === wait) { soloTurnWait = null; res(); }
+      }, timeoutMs);
     });
+  }
+  function resolveSoloBotTurn() {
+    if (soloTurnWait) { const w = soloTurnWait; soloTurnWait = null; w.resolve(); }
+  }
+  // Waits until the bot has been quiet for graceMs — lets trailing speech
+  // segments finish before the simulator hangs up.
+  async function waitSoloBotIdle(graceMs = 1500, maxMs = 12000) {
+    let waited = 0;
+    while (waited < maxMs && isConnected
+           && (soloBotSpeaking || Date.now() - soloLastBotStopAt < graceMs)) {
+      await sleep(250); waited += 250;
+    }
   }
 
   async function sendText() {
@@ -2428,9 +2431,20 @@
       await sleep(800);
     }
 
+    const completed = simRunning;   // false if the user pressed Stop
     simRunning = false;
     btnSoloSimulate.textContent = '▶ Simulate';
     addEvent('simulate', 'Simulation finished');
+    // A completed voice simulation ends the call: leaving it open would keep
+    // billing STT/session time on a conversation that is over. Let the bot
+    // finish its goodbye first — hanging up mid-sentence reads as rude.
+    if (completed && mode === 'voice' && isConnected && client) {
+      await waitSoloBotIdle();
+      if (isConnected && client) {
+        addEvent('simulate', 'Auto-disconnecting the call');
+        await client.disconnect();
+      }
+    }
   }
   btnSoloSimulate.addEventListener('click', runSoloSimulation);
 
@@ -2523,7 +2537,9 @@
       chatHistory: [],
       openBot: null,   // per-turn baseline for the currently-open bot bubble
       sessionLLM: null,     // LLM label frozen at connect time
-      botTurnResolve: null, // resolves when the bot finishes its spoken turn
+      turnWait: null,       // {armed, resolve} — see waitBotTurn
+      speaking: false,      // bot is currently speaking
+      lastStopAt: 0,        // when the bot last stopped speaking
       botTurnsDone: 0,      // completed spoken turns this session (greeting = 1)
 
       resetUsage() {
@@ -2588,6 +2604,9 @@
           els.stt.disabled = rt;
           els.tts.disabled = rt;
         }
+        // S2S models do their own speech handling — hide the STT/TTS pickers
+        els.stt.closest('.selector-pill').style.display = rt ? 'none' : '';
+        els.tts.closest('.selector-pill').style.display = rt ? 'none' : '';
         this.fillVoices();
         this.fillLanguages();
       },
@@ -2762,7 +2781,8 @@
                 els.dur.textContent = '—';
                 els.audio.srcObject = null;
                 self.client = null;
-                if (self.botTurnResolve) { self.botTurnResolve(); self.botTurnResolve = null; }
+                self.speaking = false;
+                self.resolveBotTurn();
                 addEvent('disconnected', `Pane ${name}: session ended`);
                 updateSplitControls();
               },
@@ -2798,6 +2818,8 @@
                 }
               },
               onBotStartedSpeaking: () => {
+                self.speaking = true;
+                if (self.turnWait) self.turnWait.armed = true;
                 if (self.stopTime) {
                   self.usage.turnLatencyMs = Date.now() - self.stopTime;
                   self.turnLats.push(self.usage.turnLatencyMs);
@@ -2807,9 +2829,11 @@
                 }
               },
               onBotStoppedSpeaking: () => {
+                self.speaking = false;
+                self.lastStopAt = Date.now();
                 self.botTurnsDone += 1;
                 self.curBot = null;   // spoken turn done — next reply gets its own bubble
-                if (self.botTurnResolve) { self.botTurnResolve(); self.botTurnResolve = null; }
+                if (self.turnWait && self.turnWait.armed) self.resolveBotTurn();
               },
               onUserStartedSpeaking: () => {
                 self.curBot = null;
@@ -2846,13 +2870,32 @@
         await this.textChat(text);
       },
 
-      // Resolves when this pane's bot finishes speaking (or on timeout)
+      // Resolves when this pane's bot finishes speaking its next turn (or on
+      // timeout). Armed only once the bot starts speaking after the wait
+      // begins, so a stale stop event can't resolve it early (same guard as
+      // the solo simulator).
       waitBotTurn(timeoutMs = 30000) {
         const self = this;
         return new Promise(res => {
-          self.botTurnResolve = res;
-          setTimeout(res, timeoutMs);
+          const wait = { armed: self.speaking, resolve: res };
+          self.turnWait = wait;
+          setTimeout(() => {
+            if (self.turnWait === wait) { self.turnWait = null; res(); }
+          }, timeoutMs);
         });
+      },
+
+      resolveBotTurn() {
+        if (this.turnWait) { const w = this.turnWait; this.turnWait = null; w.resolve(); }
+      },
+
+      // Waits until this pane's bot has been quiet for graceMs
+      async waitIdle(graceMs = 1500, maxMs = 12000) {
+        let waited = 0;
+        while (waited < maxMs && this.connected
+               && (this.speaking || Date.now() - this.lastStopAt < graceMs)) {
+          await sleep(250); waited += 250;
+        }
       },
 
       // One simulation turn: live voice turn if connected, else text chat
@@ -3019,9 +3062,19 @@
       await sleep(800);
     }
 
+    const completed = simRunning;   // false if the user pressed Stop
     simRunning = false;
     btnSimulate.textContent = '▶ Simulate';
     addEvent('simulate', 'Simulation finished');
+    // A completed voice simulation ends the live calls — after each bot has
+    // finished saying its goodbye (see solo simulate)
+    if (completed && panes.some(p => p.connected)) {
+      addEvent('simulate', 'Auto-disconnecting live panes');
+      await Promise.all(panes.map(async p => {
+        await p.waitIdle();
+        await p.disconnect();
+      }));
+    }
   }
   btnSimulate.addEventListener('click', runSplitSimulation);
 
