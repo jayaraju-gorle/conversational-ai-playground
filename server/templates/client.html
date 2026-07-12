@@ -892,13 +892,6 @@
     }
     /* In panes, anchor tooltips to the left edge so they don't overflow */
     .pane .metric-tooltip { left: 0; right: auto; }
-    .pane-dur {
-      margin-left: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.72rem;
-      color: var(--text-2);
-    }
-
     .pane-msgs {
       flex: 1;
       overflow-y: auto;
@@ -1250,10 +1243,9 @@
       <div class="pane" data-pane="B"></div>
     </div>
     <div class="split-input">
-      <button class="btn-ghost" id="btnBothConnect" title="Start or end both voice calls together">Connect both</button>
       <button class="btn-ghost" id="btnSimulate" title="Auto-play pane A's scenario sample conversation on both agents">▶ Simulate</button>
       <button class="btn-ghost" id="btnSplitClear" title="Clear both panes' conversations">🗑 Clear</button>
-      <input type="text" id="splitInput" placeholder="Type once — goes to both agents (text chat when disconnected, live turn when connected). Or connect and speak.">
+      <input type="text" id="splitInput" placeholder="Type once — goes to both LLMs at once. Compare mode is text-only; use Solo for live voice.">
       <button id="splitSend" title="Send to both agents">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
@@ -2282,6 +2274,9 @@
     curBotContent = null;   // reply to this message starts a fresh bubble
     addMessage('user', text, viewAudio);
     addEvent('text', `Sent to bot: ${text}`);
+    // Text turns have no "user stopped speaking" event — start the turn
+    // latency clock at send time (measures send → first bot audio)
+    userStoppedTime = Date.now();
     try {
       await client.sendText(text);
     } catch (e) {
@@ -2453,38 +2448,27 @@
   // ═══════════════════════════════════════════════════
 
   const PANE_TEMPLATE = `
-    <audio class="p-audio" autoplay style="display:none;"></audio>
     <div class="pane-config">
       <span class="pane-name"></span>
       <div class="selector-pill"><select class="p-scenario"></select></div>
       <div class="selector-pill"><select class="p-llm"></select></div>
-      <div class="selector-pill"><select class="p-stt"></select></div>
-      <div class="selector-pill"><select class="p-tts"></select></div>
-      <div class="selector-pill"><select class="p-voice"></select></div>
+      <div class="selector-pill" hidden><select class="p-stt"></select></div>
+      <div class="selector-pill" hidden><select class="p-tts"></select></div>
+      <div class="selector-pill" hidden><select class="p-voice"></select></div>
       <div class="selector-pill"><select class="p-lang"></select></div>
-      <button class="btn-connect idle sm p-connect"><span class="dot"></span>Connect</button>
-      <button class="btn-ghost p-mute" title="Mute this agent's audio">🔊</button>
     </div>
     <div class="pane-metrics">
       <div class="metric-item tooltip-trigger">Cost <span class="m-val p-cost">—</span>
         <div class="metric-tooltip">
           <div class="tooltip-title">Session Cost</div>
-          <div class="tooltip-row"><span>STT</span><span class="p-cost-stt">—</span></div>
-          <div class="tooltip-row"><span>LLM</span><span class="p-cost-llm">—</span></div>
-          <div class="tooltip-row"><span>TTS</span><span class="p-cost-tts">—</span></div>
-          <div class="tooltip-divider"></div>
-          <div class="tooltip-row"><span>Effective rate</span><span class="p-cost-min">—</span></div>
+          <div class="tooltip-row"><span>LLM (tokens)</span><span class="p-cost-llm">—</span></div>
         </div>
       </div>
       <div class="metric-item tooltip-trigger">Latency <span class="m-val p-lat">—</span>
         <div class="metric-tooltip">
-          <div class="tooltip-title">Voice-to-Voice Latency</div>
+          <div class="tooltip-title">LLM Response Latency</div>
           <div class="tooltip-row"><span>Last turn</span><span class="p-lat-last">—</span></div>
           <div class="tooltip-row"><span>Average</span><span class="p-lat-avg">—</span></div>
-          <div class="tooltip-divider"></div>
-          <div class="tooltip-row"><span>STT TTFB</span><span class="p-ttfb-stt">—</span></div>
-          <div class="tooltip-row"><span>LLM TTFB</span><span class="p-ttfb-llm">—</span></div>
-          <div class="tooltip-row"><span>TTS TTFB</span><span class="p-ttfb-tts">—</span></div>
         </div>
       </div>
       <div class="metric-item tooltip-trigger">Tokens <span class="m-val p-tok">0</span>
@@ -2492,15 +2476,13 @@
           <div class="tooltip-title">LLM Token Usage</div>
           <div class="tooltip-row"><span>Prompt</span><span class="p-tok-in">0</span></div>
           <div class="tooltip-row"><span>Completion</span><span class="p-tok-out">0</span></div>
-          <div class="tooltip-row"><span>TTS characters</span><span class="p-tts-chars">0</span></div>
         </div>
       </div>
-      <span class="pane-dur">Duration <span class="p-dur">—</span></span>
     </div>
     <div class="pane-msgs">
       <div class="empty-state">
-        <div class="icon">🎙️</div>
-        <p>Type below to text-chat with both configs at once, or press <strong>Connect</strong> for live voice — speak once and both agents hear you.</p>
+        <div class="icon">💬</div>
+        <p>Type below to text-chat with both configs at once. Compare mode is text-only — switch to <strong>Solo</strong> for live voice.</p>
       </div>
     </div>
   `;
@@ -2513,34 +2495,23 @@
     const els = {
       scenario: $('.p-scenario'), llm: $('.p-llm'), stt: $('.p-stt'),
       tts: $('.p-tts'), voice: $('.p-voice'), lang: $('.p-lang'),
-      connect: $('.p-connect'), mute: $('.p-mute'), audio: $('.p-audio'),
-      msgs: $('.pane-msgs'), dur: $('.p-dur'),
-      cost: $('.p-cost'), costStt: $('.p-cost-stt'), costLlm: $('.p-cost-llm'),
-      costTts: $('.p-cost-tts'), costMin: $('.p-cost-min'),
+      msgs: $('.pane-msgs'),
+      cost: $('.p-cost'), costLlm: $('.p-cost-llm'),
       lat: $('.p-lat'), latLast: $('.p-lat-last'), latAvg: $('.p-lat-avg'),
-      ttfbStt: $('.p-ttfb-stt'), ttfbLlm: $('.p-ttfb-llm'), ttfbTts: $('.p-ttfb-tts'),
       tok: $('.p-tok'), tokIn: $('.p-tok-in'), tokOut: $('.p-tok-out'),
-      ttsChars: $('.p-tts-chars'),
     };
 
+    // Compare panes are text-only (direct LLM chat via /api/chat) — running
+    // two live voice pipelines in parallel strains the prototype server.
+    // Live voice lives in Solo mode.
     const pane = {
       name,
-      client: null,
-      connected: false,
       startMs: null,
-      timer: null,
       turnLats: [],
-      stopTime: null,
       curBot: null,
       curUser: null,
       usage: null,
       chatHistory: [],
-      openBot: null,   // per-turn baseline for the currently-open bot bubble
-      sessionLLM: null,     // LLM label frozen at connect time
-      turnWait: null,       // {armed, resolve} — see waitBotTurn
-      speaking: false,      // bot is currently speaking
-      lastStopAt: 0,        // when the bot last stopped speaking
-      botTurnsDone: 0,      // completed spoken turns this session (greeting = 1)
 
       resetUsage() {
         this.usage = {
@@ -2549,7 +2520,6 @@
           ttfb: { stt: null, llm: null, tts: null }, turnLatencyMs: null,
         };
         this.turnLats = [];
-        this.stopTime = null;
       },
 
       fillOptions() {
@@ -2558,6 +2528,13 @@
         const copy = (dst, src) => { const v = dst.value; dst.innerHTML = src.innerHTML; if (v) dst.value = v; };
         copy(els.scenario, selScenario);
         copy(els.llm, selLLM);
+        // Realtime (speech-to-speech) models can't do text chat — drop them,
+        // along with any group heading left empty (e.g. "Realtime (S2S)")
+        [...els.llm.querySelectorAll('option')]
+          .filter(o => isRealtimeLLM(o.value)).forEach(o => o.remove());
+        [...els.llm.querySelectorAll('optgroup')]
+          .filter(g => !g.children.length).forEach(g => g.remove());
+        if (els.llm.selectedIndex < 0) els.llm.selectedIndex = 0;
         copy(els.stt, selSTT);
         copy(els.tts, selTTS);
         // First fill: adopt the configured defaults rather than first options
@@ -2599,33 +2576,12 @@
       },
 
       updateRealtimeUI() {
-        const rt = isRealtimeLLM(els.llm.value);
-        if (!this.connected) {
-          els.stt.disabled = rt;
-          els.tts.disabled = rt;
-        }
-        // S2S models do their own speech handling — hide the STT/TTS pickers
-        els.stt.closest('.selector-pill').style.display = rt ? 'none' : '';
-        els.tts.closest('.selector-pill').style.display = rt ? 'none' : '';
         this.fillVoices();
         this.fillLanguages();
       },
 
       scenarioValue() {
         return els.scenario.value;
-      },
-
-      lock(locked) {
-        [els.scenario, els.llm, els.stt, els.tts, els.voice, els.lang]
-          .forEach(s => s.disabled = locked);
-        if (!locked) this.updateRealtimeUI();
-      },
-
-      setConnectState(state) {
-        els.connect.className = `btn-connect ${state} sm p-connect`;
-        els.connect.innerHTML = state === 'idle' ? '<span class="dot"></span>Connect'
-          : state === 'connecting' ? '<span class="dot"></span>Connecting…'
-          : '<span class="dot"></span>Disconnect';
       },
 
       addMsg(sender, text) {
@@ -2644,270 +2600,34 @@
         return div.querySelector('.msg-content');
       },
 
-      currentCostTotal() {
-        return costsFrom(
-          ratesFor(els.stt.value, els.tts.value, els.llm.value), this.usage, this.startMs
-        ).total;
-      },
-
-      updateBotMeta() {
-        if (!this.openBot) return;
-        const p = this.usage.promptTokens - this.openBot.basePrompt;
-        const c = this.usage.completionTokens - this.openBot.baseCompletion;
-        const cost = Math.max(0, this.currentCostTotal() - this.openBot.baseCost);
-        setMsgMeta(this.openBot.el, [
-          this.sessionLLM,
-          this.usage.turnLatencyMs != null ? this.usage.turnLatencyMs + 'ms' : null,
-          tokStr(p, c),
-          llmRateStr(els.llm.value),
-        ], cost);
-      },
-
-      appendTranscript(sender, text) {
-        if (sender === 'bot') {
-          this.curUser = null;
-          if (this.curBot) this.curBot.textContent += ' ' + text;
-          else {
-            this.curBot = this.addMsg('bot', text);
-            this.openBot = {
-              el: this.curBot,
-              basePrompt: this.usage.promptTokens,
-              baseCompletion: this.usage.completionTokens,
-              baseCost: this.currentCostTotal(),
-            };
-            this.updateBotMeta();
-          }
-        } else {
-          this.curBot = null;
-          if (this.curUser) this.curUser.textContent += ' ' + text;
-          else {
-            this.curUser = this.addMsg('user', text);
-            this.openBot = null;   // bot turn finished; its meta line is final
-          }
-        }
-        els.msgs.scrollTop = els.msgs.scrollHeight;
-      },
-
       renderMetrics() {
         if (!this.usage) return;
         const u = this.usage;
         const r = ratesFor(els.stt.value, els.tts.value, els.llm.value);
         const c = costsFrom(r, u, this.startMs);
         els.cost.textContent = fmtMoney(c.total);
-        els.costStt.textContent = fmtMoney(c.sttCost);
         els.costLlm.textContent = fmtMoney(c.llmCost);
-        els.costTts.textContent = fmtMoney(c.ttsCost);
-        els.costMin.textContent = c.elapsedMin > 0.05
-          ? fmtMoney(c.total / c.elapsedMin) + '/min' : '—';
 
         const totalTok = u.promptTokens + u.completionTokens;
         els.tok.textContent = totalTok.toLocaleString();
         els.tokIn.textContent = u.promptTokens.toLocaleString();
         els.tokOut.textContent = u.completionTokens.toLocaleString();
-        els.ttsChars.textContent = u.ttsChars.toLocaleString();
 
-        const ms = (s) => s == null ? '—' : Math.round(s * 1000) + 'ms';
-        els.ttfbStt.textContent = ms(u.ttfb.stt);
-        els.ttfbLlm.textContent = ms(u.ttfb.llm);
-        els.ttfbTts.textContent = ms(u.ttfb.tts);
-        if (u.turnLatencyMs != null) {
-          els.lat.textContent = u.turnLatencyMs + 'ms';
-          els.latLast.textContent = u.turnLatencyMs + 'ms';
-        }
+        els.lat.textContent = u.turnLatencyMs != null ? u.turnLatencyMs + 'ms' : '—';
+        els.latLast.textContent = u.turnLatencyMs != null ? u.turnLatencyMs + 'ms' : '—';
         els.latAvg.textContent = this.turnLats.length
           ? Math.round(this.turnLats.reduce((a, b) => a + b, 0) / this.turnLats.length) + 'ms'
           : '—';
       },
 
-      async toggleConnect() {
-        els.audio.play().catch(() => {});
-        if (this.connected) {
-          this.setConnectState('connecting');
-          if (this.client) await this.client.disconnect();
-          return;
-        }
-
-        els.connect.disabled = true;
-        this.lock(true);
-        this.setConnectState('connecting');
-
-        const configData = {
-          scenario: els.scenario.value || 'generic',
-          llm: els.llm.value || 'google',
-          stt: els.stt.value || 'sarvam',
-          tts: els.tts.value || 'sarvam',
-          voice: els.voice.value || 'aditya',
-          language: els.lang.value || 'en-IN',
-        };
-
-        this.resetUsage();
-        this.curBot = null;
-        this.curUser = null;
-        this.openBot = null;
-        this.botTurnsDone = 0;
-        this.sessionLLM = els.llm.options[els.llm.selectedIndex]?.text || null;
-        els.lat.textContent = '—';
-        this.renderMetrics();
-
-        const self = this;
-        try {
-          const transport = makeVoiceTransport();
-          this.client = new PipecatClient({
-            transport,
-            enableMic: true,
-            enableCam: false,
-            callbacks: {
-              onConnected: () => {
-                self.connected = true;
-                self.setConnectState('connected');
-                els.connect.disabled = false;
-                self.startMs = Date.now();
-                self.timer = setInterval(() => {
-                  const sec = Math.floor((Date.now() - self.startMs) / 1000);
-                  els.dur.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-                  self.renderMetrics();
-                }, 1000);
-                addEvent('connected', `Pane ${name}: LLM=${configData.llm} STT=${configData.stt} TTS=${configData.tts} Lang=${configData.language}`);
-                updateSplitControls();
-              },
-              onDisconnected: () => {
-                self.connected = false;
-                self.setConnectState('idle');
-                els.connect.disabled = false;
-                self.lock(false);
-                clearInterval(self.timer);
-                self.timer = null;
-                self.startMs = null;
-                els.dur.textContent = '—';
-                els.audio.srcObject = null;
-                self.client = null;
-                self.speaking = false;
-                self.resolveBotTurn();
-                addEvent('disconnected', `Pane ${name}: session ended`);
-                updateSplitControls();
-              },
-              onMetrics: (data) => {
-                accumulateMetrics(self.usage, data);
-                self.renderMetrics();
-                self.updateBotMeta();
-              },
-              onError: (msg) => {
-                const detail = typeof msg === 'string' ? msg : JSON.stringify(msg?.data ?? msg);
-                addEvent('error', `Pane ${name} pipeline: ${detail}`);
-                self.curBot = null;
-                self.addMsg('bot', `⚠ Pipeline error: ${detail}`);
-                self.curBot = null;
-              },
-              onUserTranscript: (data) => {
-                if (data?.text && data.final !== false) self.appendTranscript('user', data.text);
-              },
-              onBotTranscript: (data) => {
-                if (data?.text) self.appendTranscript('bot', data.text);
-              },
-              onTrackStarted: (track, participant) => {
-                if (track.kind !== 'audio') return;
-                if (participant?.local) return;   // never route the mic to the speaker
-                els.audio.srcObject = new MediaStream([track]);
-                els.audio.play().catch(() => {});
-              },
-              onUserStoppedSpeaking: () => {
-                self.stopTime = Date.now();
-                if (self.usage.speechStart) {
-                  self.usage.speechMs += Date.now() - self.usage.speechStart;
-                  self.usage.speechStart = null;
-                }
-              },
-              onBotStartedSpeaking: () => {
-                self.speaking = true;
-                if (self.turnWait) self.turnWait.armed = true;
-                if (self.stopTime) {
-                  self.usage.turnLatencyMs = Date.now() - self.stopTime;
-                  self.turnLats.push(self.usage.turnLatencyMs);
-                  self.stopTime = null;
-                  self.renderMetrics();
-                  self.updateBotMeta();
-                }
-              },
-              onBotStoppedSpeaking: () => {
-                self.speaking = false;
-                self.lastStopAt = Date.now();
-                self.botTurnsDone += 1;
-                self.curBot = null;   // spoken turn done — next reply gets its own bubble
-                if (self.turnWait && self.turnWait.armed) self.resolveBotTurn();
-              },
-              onUserStartedSpeaking: () => {
-                self.curBot = null;
-                self.usage.speechStart = Date.now();
-              },
-            }
-          });
-
-          await startVoiceBot(this.client, configData);
-        } catch (err) {
-          console.error(`Pane ${name} connection failed:`, err);
-          addEvent('error', `Pane ${name} connection failed: ${err.message}`);
-          this.setConnectState('idle');
-          els.connect.disabled = false;
-          this.lock(false);
-          this.client = null;
-        }
-      },
-
       async sendText(text) {
-        if (this.connected && this.client) {
-          // Live voice session: inject the text as a user turn
-          this.curUser = null;
-          this.curBot = null;   // reply to this message starts a fresh bubble
-          this.addMsg('user', text);
-          try {
-            await this.client.sendText(text);
-          } catch (e) {
-            console.warn(`Pane ${name}: sendText failed`, e);
-          }
-          return;
-        }
-        // Not connected: direct text chat against this pane's LLM
+        // Direct text chat against this pane's LLM
         await this.textChat(text);
       },
 
-      // Resolves when this pane's bot finishes speaking its next turn (or on
-      // timeout). Armed only once the bot starts speaking after the wait
-      // begins, so a stale stop event can't resolve it early (same guard as
-      // the solo simulator).
-      waitBotTurn(timeoutMs = 30000) {
-        const self = this;
-        return new Promise(res => {
-          const wait = { armed: self.speaking, resolve: res };
-          self.turnWait = wait;
-          setTimeout(() => {
-            if (self.turnWait === wait) { self.turnWait = null; res(); }
-          }, timeoutMs);
-        });
-      },
-
-      resolveBotTurn() {
-        if (this.turnWait) { const w = this.turnWait; this.turnWait = null; w.resolve(); }
-      },
-
-      // Waits until this pane's bot has been quiet for graceMs
-      async waitIdle(graceMs = 1500, maxMs = 12000) {
-        let waited = 0;
-        while (waited < maxMs && this.connected
-               && (this.speaking || Date.now() - this.lastStopAt < graceMs)) {
-          await sleep(250); waited += 250;
-        }
-      },
-
-      // One simulation turn: live voice turn if connected, else text chat
+      // One simulation turn
       async playTurn(text) {
-        if (this.connected && this.client) {
-          // Don't talk over the greeting — wait for it on the first turn
-          if (this.botTurnsDone === 0) await this.waitBotTurn(20000);
-          await this.sendText(text);
-          await this.waitBotTurn();
-        } else {
-          await this.textChat(text);
-        }
+        await this.textChat(text);
       },
 
       async textChat(text) {
@@ -2964,35 +2684,24 @@
         }
       },
 
-      async disconnect() {
-        if (this.connected && this.client) await this.client.disconnect();
-      },
-
       clearChat() {
         els.msgs.innerHTML = '';
         this.chatHistory = [];
         this.curBot = null;
         this.curUser = null;
-        this.openBot = null;
         // Metrics reset with the conversation (mirrors the Solo Clear)
         this.resetUsage();
-        if (this.connected) this.startMs = Date.now();  // rebase live-call clock
         this.renderMetrics();
       },
     };
 
     pane.resetUsage();
-    els.connect.addEventListener('click', () => pane.toggleConnect());
     els.tts.addEventListener('change', () => { pane.fillVoices(); pane.fillLanguages(); });
     els.stt.addEventListener('change', () => pane.fillLanguages());
     els.llm.addEventListener('change', () => pane.updateRealtimeUI());
     // Persona or model swap mid-chat would confuse the LLM — start fresh
     [els.scenario, els.llm].forEach(sel =>
       sel.addEventListener('change', () => { pane.chatHistory = []; }));
-    els.mute.addEventListener('click', () => {
-      els.audio.muted = !els.audio.muted;
-      els.mute.textContent = els.audio.muted ? '🔇' : '🔊';
-    });
 
     return pane;
   }
@@ -3002,7 +2711,7 @@
     createPane(document.querySelector('.pane[data-pane="B"]'), 'B'),
   ];
 
-  // Shared input: broadcast to every connected pane
+  // Shared input: broadcast to both panes
   function splitSendText() {
     const text = splitInput.value.trim();
     if (!text) return;
@@ -3017,33 +2726,13 @@
     }
   });
 
-  // ── Joint call controls + simulation (Compare mode) ──
-  const btnBothConnect = document.getElementById('btnBothConnect');
+  // ── Joint controls + simulation (Compare mode, text-only) ──
   const btnSimulate = document.getElementById('btnSimulate');
   const btnSplitClear = document.getElementById('btnSplitClear');
 
   btnSplitClear.addEventListener('click', () => {
-    panes.forEach(p => {
-      p.clearChat();
-      // Live sessions keep context server-side — reconnect to truly forget
-      if (p.connected) {
-        p.disconnect();
-        setTimeout(() => { if (!p.connected) p.toggleConnect(); }, 800);
-      }
-    });
+    panes.forEach(p => p.clearChat());
     addEvent('action', 'Both panes cleared (conversation, context, metrics)');
-  });
-
-  function updateSplitControls() {
-    btnBothConnect.textContent = panes.every(p => p.connected) ? 'End both' : 'Connect both';
-  }
-
-  btnBothConnect.addEventListener('click', () => {
-    if (panes.every(p => p.connected)) {
-      panes.forEach(p => p.disconnect());
-    } else {
-      panes.filter(p => !p.connected).forEach(p => p.toggleConnect());
-    }
   });
 
   async function runSplitSimulation() {
@@ -3062,19 +2751,9 @@
       await sleep(800);
     }
 
-    const completed = simRunning;   // false if the user pressed Stop
     simRunning = false;
     btnSimulate.textContent = '▶ Simulate';
     addEvent('simulate', 'Simulation finished');
-    // A completed voice simulation ends the live calls — after each bot has
-    // finished saying its goodbye (see solo simulate)
-    if (completed && panes.some(p => p.connected)) {
-      addEvent('simulate', 'Auto-disconnecting live panes');
-      await Promise.all(panes.map(async p => {
-        await p.waitIdle();
-        await p.disconnect();
-      }));
-    }
   }
   btnSimulate.addEventListener('click', runSplitSimulation);
 
@@ -3089,11 +2768,8 @@
       el.style.display = v === 'solo' ? '' : 'none');
 
     if (v === 'split') {
-      // Leaving solo: end its live session so agents don't talk over each other
+      // Leaving solo: end its live session (Compare mode is text-only)
       if (isConnected && client) client.disconnect();
-    } else {
-      // Leaving split: end both pane sessions
-      panes.forEach(p => p.disconnect());
     }
   }
   viewToggle.querySelectorAll('button').forEach(btn =>

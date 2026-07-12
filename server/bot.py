@@ -58,6 +58,24 @@ from pipecat.workers.runner import WorkerRunner
 load_dotenv(override=True)
 
 
+# Pipecat's websocket DeepgramTTSService and GroqTTSService never call
+# start_tts_usage_metrics (Sarvam/Cartesia do), so sessions using them report
+# 0 TTS characters and the UI prices TTS at $0. Record usage here until the
+# upstream services do it themselves.
+class MeteredDeepgramTTSService(DeepgramTTSService):
+    async def run_tts(self, text, context_id):
+        await self.start_tts_usage_metrics(text)
+        async for frame in super().run_tts(text, context_id):
+            yield frame
+
+
+class MeteredGroqTTSService(GroqTTSService):
+    async def run_tts(self, text, context_id):
+        await self.start_tts_usage_metrics(text)
+        async for frame in super().run_tts(text, context_id):
+            yield frame
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Playground catalog: providers, languages, voices, pricing
 # Served to the client via GET /api/config so the UI is data-driven.
@@ -369,19 +387,6 @@ VOICES = {
 # the bot as *their* business. Availability/account data is simulated — the
 # persona says so explicitly, so the bot behaves like a demo, not a liar.
 SCENARIOS = {
-    "generic": {
-        "label": "General Assistant",
-        "persona": (
-            "You are a helpful business assistant for customer-facing sales"
-            " and support conversations."
-        ),
-        "greeting": "Start by concisely introducing yourself and asking how you can help.",
-        "sample": [
-            "Hi, who are you and what can you help me with?",
-            "What kind of businesses do you usually assist?",
-            "Alright, thanks. That's all for now.",
-        ],
-    },
     "hospital": {
         "label": "Hospital — Appointment Booking",
         "persona": (
@@ -457,6 +462,19 @@ SCENARIOS = {
             "It was supposed to arrive two days ago.",
             "If it doesn't arrive by then, can I get a refund?",
             "Okay, thank you for the help.",
+        ],
+    },
+    "generic": {
+        "label": "General Assistant",
+        "persona": (
+            "You are a helpful business assistant for customer-facing sales"
+            " and support conversations."
+        ),
+        "greeting": "Start by concisely introducing yourself and asking how you can help.",
+        "sample": [
+            "Hi, who are you and what can you help me with?",
+            "What kind of businesses do you usually assist?",
+            "Alright, thanks. That's all for now.",
         ],
     },
 }
@@ -609,13 +627,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 voice_selection if voice_selection in DEEPGRAM_AURA_VOICES
                 else "aura-2-thalia-en"
             )
-            tts = DeepgramTTSService(
+            tts = MeteredDeepgramTTSService(
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
                 settings=DeepgramTTSService.Settings(voice=dg_voice),
             )
         elif tts_provider == "groq":
             groq_voice = voice_selection if voice_selection in GROQ_ORPHEUS_VOICES else "autumn"
-            tts = GroqTTSService(
+            tts = MeteredGroqTTSService(
                 api_key=os.getenv("GROQ_API_KEY"),
                 settings=GroqTTSService.Settings(
                     model="canopylabs/orpheus-v1-english",
