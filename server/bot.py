@@ -103,7 +103,7 @@ PRICING = {
         "groq": {"per_1k_chars": 0.022},    # Canopy Labs Orpheus $22/1M chars
     },
     "llm": {
-        "google": {"in_per_1m": 0.30, "out_per_1m": 2.50},   # Gemini 3.5 Flash
+        "google": {"in_per_1m": 1.50, "out_per_1m": 9.00},   # Gemini 3.5 Flash
         # Sarvam lists ₹2.5/₹10 (30B) and ₹4/₹16 (105B) per 1M — USD at ~₹88
         "sarvam:sarvam-30b": {"in_per_1m": 0.028, "out_per_1m": 0.114},
         "sarvam:sarvam-105b": {"in_per_1m": 0.045, "out_per_1m": 0.182},
@@ -129,13 +129,14 @@ PRICING = {
         # Azure OpenAI (regional list prices mirror OpenAI's)
         "azure:gpt-5-mini": {"in_per_1m": 0.25, "out_per_1m": 2.00},
         # GCP Vertex AI (same list prices as the Gemini API)
-        "vertex:gemini-3.5-flash": {"in_per_1m": 0.30, "out_per_1m": 2.50},
+        "vertex:gemini-3.5-flash": {"in_per_1m": 1.50, "out_per_1m": 9.00},
         "vertex:gemini-2.5-pro": {"in_per_1m": 1.25, "out_per_1m": 10.00},
         # xAI Grok on Vertex MaaS (xAI list prices)
         "vertex:xai/grok-4.1-fast-non-reasoning": {"in_per_1m": 0.20, "out_per_1m": 0.50},
-        "vertex:xai/grok-4.3": {"in_per_1m": 3.00, "out_per_1m": 15.00},
+        # Grok 4.3 list price (<200K prompts); ≥200K prompts bill at $2.50/$5.00
+        "vertex:xai/grok-4.3": {"in_per_1m": 1.25, "out_per_1m": 2.50},
         # Realtime S2S bills audio as tokens (Gemini Live native audio)
-        "gemini-live": {"in_per_1m": 2.10, "out_per_1m": 8.50},
+        "gemini-live": {"in_per_1m": 3.00, "out_per_1m": 12.00},
         # OpenAI gpt-realtime audio-token pricing
         "openai-realtime": {"in_per_1m": 32.00, "out_per_1m": 64.00},
     },
@@ -397,8 +398,10 @@ SCENARIOS = {
             " Dermatology, ENT), and their preferred date and time. Consultations are"
             " available Monday to Saturday, 9 AM to 1 PM and 5 PM to 8 PM. This is a"
             " product demo, so simulate realistic slot availability — occasionally a"
-            " requested slot is taken and you offer the nearest alternatives. Before"
-            " confirming, read back the full booking details. Never give medical"
+            " requested slot is taken and you offer the nearest alternatives. If the"
+            " caller says any nearby slot works or asks you to confirm, pick the best"
+            " available slot yourself and confirm it — do not keep asking them to"
+            " choose. Before confirming, read back the full booking details. Never give medical"
             " advice; for emergencies, tell the caller to visit the emergency"
             " department immediately."
         ),
@@ -409,8 +412,9 @@ SCENARIOS = {
         "sample": [
             "Hi, I'd like to book an appointment with a cardiologist.",
             "My name is Ravi Kumar.",
-            "Tomorrow morning around 10 would be great.",
-            "Yes, please confirm that booking.",
+            "Sometime this week, morning around 10 if possible — but any nearby"
+            " slot works for me.",
+            "Yes, please book whichever slot is closest and confirm it.",
             "No, that's all. Thank you!",
         ],
     },
@@ -462,6 +466,69 @@ SCENARIOS = {
             "It was supposed to arrive two days ago.",
             "If it doesn't arrive by then, can I get a refund?",
             "Okay, thank you for the help.",
+        ],
+    },
+    "restaurant": {
+        "label": "Restaurant — Table Reservation",
+        "persona": (
+            "You are the reservation assistant for Spice Garden, a family"
+            " restaurant serving Indian and Continental cuisine. Help callers"
+            " book, modify, or cancel table reservations. Collect one detail at"
+            " a time: the guest's name, party size, and preferred date and time."
+            " The restaurant is open daily from 12 PM to 3:30 PM for lunch and"
+            " 7 PM to 11 PM for dinner. Tables seat up to 8; for larger groups,"
+            " offer the private dining hall which seats up to 25. This is a"
+            " product demo, so simulate realistic table availability —"
+            " occasionally a requested slot is full and you offer the nearest"
+            " alternatives. If the caller says any nearby time works or asks you"
+            " to confirm, pick the best available slot yourself and confirm it —"
+            " do not keep asking them to choose. Mention that guests can note"
+            " dietary preferences or special occasions like birthdays. Before"
+            " confirming, read back the full reservation details."
+        ),
+        "greeting": (
+            "Greet the caller as Spice Garden's reservation assistant and ask"
+            " how you can help."
+        ),
+        "sample": [
+            "Hi, I'd like to book a table for this Saturday evening.",
+            "We'll be 4 people, name is Anita Desai.",
+            "Around 8 PM, but anything close to that works for us.",
+            "It's my husband's birthday, so please note that too. Go ahead and"
+            " book whichever slot is closest.",
+            "Perfect, that all sounds right. Thank you!",
+        ],
+    },
+    "hotel": {
+        "label": "Hotel — Room Booking",
+        "persona": (
+            "You are the reservations assistant for The Grand Meridian, a"
+            " business and leisure hotel. Help callers book, modify, or cancel"
+            " room reservations. Collect one detail at a time: the guest's name,"
+            " check-in and check-out dates, number of guests, and room"
+            " preference. Room types are Deluxe (₹6,500 or $79 per night),"
+            " Executive Suite (₹11,000 or $132 per night), and Family Room"
+            " (₹9,000 or $108 per night); all rates include breakfast."
+            " Check-in is at 2 PM and check-out at 11 AM. This is a product"
+            " demo, so simulate realistic room availability — occasionally a"
+            " requested room type is sold out and you offer alternatives. If"
+            " the caller accepts an alternative or asks you to book whatever is"
+            " available, confirm it — do not keep asking them to choose."
+            " Answer common questions about amenities: free Wi-Fi, pool, gym,"
+            " airport shuttle on request. Before confirming, read back the full"
+            " booking details including dates, room type, and total price."
+        ),
+        "greeting": (
+            "Greet the caller as The Grand Meridian's reservations assistant"
+            " and ask how you can help."
+        ),
+        "sample": [
+            "Hello, I need a room for two nights next weekend.",
+            "It's for me and my wife, name is Arjun Mehta.",
+            "The Executive Suite sounds good. Does it have a king bed?",
+            "Please book it — or if the suite isn't available, the Family Room"
+            " is fine. And add the airport shuttle.",
+            "Perfect, that's all. Thanks!",
         ],
     },
     "generic": {
