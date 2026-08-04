@@ -605,6 +605,33 @@
       border-bottom-left-radius: 3px;
     }
 
+    /* Rendered markdown inside assistant bubbles */
+    .msg-content p { margin: 0; }
+    .msg-content p + p { margin-top: 0.55rem; }
+    .msg-content ul, .msg-content ol {
+      margin: 0.45rem 0;
+      padding-left: 1.3rem;
+    }
+    .msg-content li { margin: 0.15rem 0; }
+    .msg-content li::marker { color: var(--text-3); }
+    .msg-content .md-h {
+      font-weight: 700;
+      margin: 0.6rem 0 0.25rem;
+    }
+    .msg-content p:first-child, .msg-content .md-h:first-child,
+    .msg-content ul:first-child, .msg-content ol:first-child { margin-top: 0; }
+    .msg-content p:last-child, .msg-content ul:last-child,
+    .msg-content ol:last-child { margin-bottom: 0; }
+    .msg-content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85em;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.05em 0.35em;
+    }
+    .msg-content strong { font-weight: 700; }
+
     .msg .timestamp {
       font-size: 0.65rem;
       margin-top: 0.3rem;
@@ -1789,6 +1816,60 @@
     return new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
+  // ── Lightweight markdown rendering for LLM replies ──────────
+  // Handles what chat models actually emit: paragraphs, **bold**, *italic*,
+  // `code`, headings, and bullet/numbered lists. Text is HTML-escaped before
+  // any tags are added, so model output can't inject markup.
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function mdInline(s) {
+    return s
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
+  }
+
+  function renderMarkdown(raw) {
+    const lines = escapeHtml(raw || '').split(/\r?\n/);
+    const out = [];
+    let list = null;          // open list tag: 'ul' | 'ol' | null
+    let para = [];            // consecutive plain lines → one paragraph
+    const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+    const closePara = () => {
+      if (para.length) { out.push(`<p>${para.join('<br>')}</p>`); para = []; }
+    };
+    for (const line of lines) {
+      const t = line.trim();
+      let m;
+      if ((m = t.match(/^[-*•]\s+(.*)/))) {
+        closePara();
+        if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; }
+        out.push(`<li>${mdInline(m[1])}</li>`);
+      } else if ((m = t.match(/^\d+[.)]\s+(.*)/))) {
+        closePara();
+        if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; }
+        out.push(`<li>${mdInline(m[1])}</li>`);
+      } else if ((m = t.match(/^#{1,6}\s+(.*)/))) {
+        closePara(); closeList();
+        out.push(`<div class="md-h">${mdInline(m[1])}</div>`);
+      } else if (t === '') {
+        closePara(); closeList();
+      } else {
+        closeList();
+        para.push(mdInline(t));
+      }
+    }
+    closePara(); closeList();
+    return out.join('');
+  }
+
+  // Assistant replies render as markdown; anything else stays plain text
+  function setBotContent(el, text) {
+    el.innerHTML = renderMarkdown(text);
+  }
+
   // Returns the content <div>, so transcript fragments can be appended
   function addMessage(sender, text, targetView) {
     const emptyState = targetView.querySelector('.empty-state');
@@ -2226,7 +2307,7 @@
 
       if (response.ok) {
         const data = await response.json();
-        botEl.textContent = data.content;
+        setBotContent(botEl, data.content);
 
         if (!data.error) {
           // Real usage + latency from the server
@@ -2652,7 +2733,8 @@
             return;
           }
           const data = await response.json();
-          const botEl = this.addMsg('bot', data.content);
+          const botEl = this.addMsg('bot', '');
+          setBotContent(botEl, data.content);
           if (!data.error) {
             const u = data.usage || {};
             this.usage.promptTokens += u.prompt_tokens || 0;
