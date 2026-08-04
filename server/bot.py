@@ -104,10 +104,12 @@ PRICING = {
     },
     "llm": {
         "google": {"in_per_1m": 1.50, "out_per_1m": 9.00},   # Gemini 3.5 Flash
+        "google:gemini-3.5-flash-lite": {"in_per_1m": 0.30, "out_per_1m": 2.50},
         # Sarvam lists ₹2.5/₹10 (30B) and ₹4/₹16 (105B) per 1M — USD at ~₹88
         "sarvam:sarvam-30b": {"in_per_1m": 0.028, "out_per_1m": 0.114},
         "sarvam:sarvam-105b": {"in_per_1m": 0.045, "out_per_1m": 0.182},
         "openai": {"in_per_1m": 2.00, "out_per_1m": 8.00},   # GPT-4.1
+        "openai:gpt-5.4": {"in_per_1m": 2.50, "out_per_1m": 15.00},
         # Anthropic (Claude) list prices
         "anthropic:claude-opus-4-8": {"in_per_1m": 5.00, "out_per_1m": 25.00},
         # Sonnet 5 intro pricing ($2/$10) runs through 2026-08-31; list is $3/$15
@@ -139,6 +141,7 @@ PRICING = {
         "gemini-live": {"in_per_1m": 3.00, "out_per_1m": 12.00},
         # OpenAI gpt-realtime audio-token pricing
         "openai-realtime": {"in_per_1m": 32.00, "out_per_1m": 64.00},
+        "openai-realtime-mini": {"in_per_1m": 10.00, "out_per_1m": 20.00},
     },
 }
 
@@ -213,7 +216,11 @@ PROVIDERS = {
         # ── Direct provider APIs ──
         {"value": "google", "label": "Gemini 3.5 Flash", "group": "Direct",
          "requires": ["GEMINI_API_KEY|GOOGLE_API_KEY"]},
+        {"value": "google:gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite",
+         "group": "Direct", "requires": ["GEMINI_API_KEY|GOOGLE_API_KEY"]},
         {"value": "openai", "label": "GPT-4.1", "group": "Direct",
+         "requires": ["OPENAI_API_KEY"]},
+        {"value": "openai:gpt-5.4", "label": "GPT-5.4", "group": "Direct",
          "requires": ["OPENAI_API_KEY"]},
         {"value": "sarvam:sarvam-30b", "label": "Sarvam 30B", "group": "Direct",
          "requires": ["SARVAM_API_KEY"]},
@@ -271,6 +278,9 @@ PROVIDERS = {
          "languages": _ALL_LANGS},
         {"value": "openai-realtime", "label": "OpenAI Realtime (S2S)", "realtime": True,
          "group": "Realtime (S2S)", "requires": ["OPENAI_API_KEY"],
+         "languages": _ALL_LANGS},
+        {"value": "openai-realtime-mini", "label": "OpenAI Realtime mini (S2S)",
+         "realtime": True, "group": "Realtime (S2S)", "requires": ["OPENAI_API_KEY"],
          "languages": _ALL_LANGS},
     ],
     "stt": [
@@ -375,6 +385,9 @@ VOICES = {
     # set when a realtime provider is selected (voice belongs to the S2S model).
     "gemini-live": [{"value": v, "label": v} for v in GEMINI_LIVE_VOICES],
     "openai-realtime": [{"value": v, "label": v.capitalize()} for v in OPENAI_REALTIME_VOICES],
+    "openai-realtime-mini": [
+        {"value": v, "label": v.capitalize()} for v in OPENAI_REALTIME_VOICES
+    ],
     "cartesia": [
         {
             "value": os.getenv("CARTESIA_VOICE_ID", "71a7ad14-091c-4e8e-a314-022ece01c121"),
@@ -396,7 +409,9 @@ SCENARIOS = {
             " Collect one detail at a time: the patient's name, the specialty or"
             " doctor they need (General Medicine, Cardiology, Orthopedics, Pediatrics,"
             " Dermatology, ENT), and their preferred date and time. Consultations are"
-            " available Monday to Saturday, 9 AM to 1 PM and 5 PM to 8 PM. This is a"
+            " available Monday to Saturday, 9 AM to 1 PM and 5 PM to 8 PM. Resolve"
+            " relative dates like 'this week' or 'tomorrow' to concrete dates"
+            " yourself and state them — do not ask for exact calendar dates. This is a"
             " product demo, so simulate realistic slot availability — occasionally a"
             " requested slot is taken and you offer the nearest alternatives. If the"
             " caller says any nearby slot works or asks you to confirm, pick the best"
@@ -475,6 +490,9 @@ SCENARIOS = {
             " restaurant serving Indian and Continental cuisine. Help callers"
             " book, modify, or cancel table reservations. Collect one detail at"
             " a time: the guest's name, party size, and preferred date and time."
+            " Resolve relative dates like 'this Saturday' to concrete dates"
+            " yourself, state your assumption, and proceed — do not ask for"
+            " exact calendar dates."
             " The restaurant is open daily from 12 PM to 3:30 PM for lunch and"
             " 7 PM to 11 PM for dinner. Tables seat up to 8; for larger groups,"
             " offer the private dining hall which seats up to 25. This is a"
@@ -509,7 +527,10 @@ SCENARIOS = {
             " preference. Room types are Deluxe (₹6,500 or $79 per night),"
             " Executive Suite (₹11,000 or $132 per night), and Family Room"
             " (₹9,000 or $108 per night); all rates include breakfast."
-            " Check-in is at 2 PM and check-out at 11 AM. This is a product"
+            " Check-in is at 2 PM and check-out at 11 AM. When a caller gives a"
+            " relative timeframe like 'next weekend', resolve it to concrete"
+            " dates yourself, state your assumption, and proceed — do not ask"
+            " for exact calendar dates. This is a product"
             " demo, so simulate realistic room availability — occasionally a"
             " requested room type is sold out and you offer alternatives. If"
             " the caller accepts an alternative or asks you to book whatever is"
@@ -523,7 +544,8 @@ SCENARIOS = {
             " and ask how you can help."
         ),
         "sample": [
-            "Hello, I need a room for two nights next weekend.",
+            "Hello, I need a room for next weekend — Friday and Saturday"
+            " night, whatever dates those fall on.",
             "It's for me and my wife, name is Arjun Mehta.",
             "The Executive Suite sounds good. Does it have a king bed?",
             "Please book it — or if the suite isn't available, the Family Room"
@@ -624,7 +646,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         else:
             llm_selection = "openai"
     llm_provider, llm_model = split_provider(llm_selection)
-    is_realtime = llm_provider in ("gemini-live", "openai-realtime")
+    is_realtime = llm_provider in ("gemini-live", "openai-realtime", "openai-realtime-mini")
     logger.info(f"Using LLM provider: {llm_provider} model={llm_model} (realtime={is_realtime})")
 
     system_instruction = build_system_instruction(
@@ -771,15 +793,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 system_instruction=system_instruction,
             ),
         )
-    elif llm_provider == "openai-realtime":
+    elif llm_provider in ("openai-realtime", "openai-realtime-mini"):
         rt_voice = body.get("voice") or "marin"
         if rt_voice not in OPENAI_REALTIME_VOICES:
             rt_voice = "marin"
-        logger.info(f"Using OpenAI Realtime voice: {rt_voice}")
+        if llm_provider == "openai-realtime-mini":
+            rt_model = os.getenv("OPENAI_REALTIME_MINI_MODEL", "gpt-realtime-mini")
+        else:
+            rt_model = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2")
+        logger.info(f"Using OpenAI Realtime voice: {rt_voice} model: {rt_model}")
         llm = OpenAIRealtimeLLMService(
             api_key=os.getenv("OPENAI_API_KEY"),
             settings=OpenAIRealtimeLLMService.Settings(
-                model=os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2"),
+                model=rt_model,
                 system_instruction=system_instruction,
                 session_properties=openai_realtime_events.SessionProperties(
                     audio=openai_realtime_events.AudioConfiguration(
@@ -800,7 +826,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         llm = GoogleLLMService(
             api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
             settings=GoogleLLMService.Settings(
-                model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+                model=llm_model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
                 system_instruction=system_instruction,
             ),
         )
@@ -862,7 +888,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         llm = OpenAIResponsesLLMService(
             api_key=os.getenv("OPENAI_API_KEY"),
             settings=OpenAIResponsesLLMService.Settings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
+                model=llm_model or os.getenv("OPENAI_MODEL", "gpt-4.1"),
                 system_instruction=system_instruction,
             ),
         )
@@ -1170,6 +1196,7 @@ if __name__ == "__main__":
             if "generateContent" in m.get("supportedGenerationMethods", [])
         }
         known = {os.getenv("GEMINI_MODEL", "gemini-3.5-flash")}
+        known |= _catalog_models_for("google")
         known |= _catalog_models_for("vertex")
         known.add(
             os.getenv("GEMINI_LIVE_MODEL", "models/gemini-2.5-flash-native-audio-latest")
@@ -1195,7 +1222,9 @@ if __name__ == "__main__":
         )
         live = {m["id"] for m in data["data"]}
         known = {os.getenv("OPENAI_MODEL", "gpt-4.1")}
+        known |= _catalog_models_for("openai")
         known.add(os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2"))
+        known.add(os.getenv("OPENAI_REALTIME_MINI_MODEL", "gpt-realtime-mini"))
         known |= {split_provider(e["value"])[1] for e in PROVIDERS["llm"]
                   if e["value"].startswith("azure:")}
         # Chat-capable families only, skipping dated snapshots — the raw list
@@ -1295,8 +1324,9 @@ if __name__ == "__main__":
         # Realtime S2S providers have no text path — use the text sibling model
         if llm_provider == "gemini-live":
             llm_provider = "google"
-        elif llm_provider == "openai-realtime":
+        elif llm_provider in ("openai-realtime", "openai-realtime-mini"):
             llm_provider = "openai"
+            llm_model = None
         _, language_label = resolve_language(request.language)
         system_instruction = build_system_instruction(
             language_label, voice_mode=False, scenario=resolve_scenario(request.scenario)
@@ -1313,7 +1343,7 @@ if __name__ == "__main__":
             if llm_provider == "vertex":
                 model_name = llm_model or "gemini-3.5-flash"
             else:
-                model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+                model_name = llm_model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
             contents = []
             for msg in request.history:
@@ -1433,7 +1463,7 @@ if __name__ == "__main__":
                 "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
                 "Content-Type": "application/json",
             }
-            model = os.getenv("OPENAI_MODEL", "gpt-4.1")
+            model = llm_model or os.getenv("OPENAI_MODEL", "gpt-4.1")
             provider_name = "OpenAI"
 
         payload_messages = [{"role": "system", "content": system_instruction}]
