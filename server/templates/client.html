@@ -68,8 +68,8 @@
     .config-bar {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      padding: 0.45rem 1rem;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
@@ -78,13 +78,14 @@
     }
     .config-bar::-webkit-scrollbar { height: 4px; }
     .config-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-    /* Fixed widths so the header never reflows when options load */
-    #selScenario { width: 200px; }
-    #selLLM      { width: 170px; }
-    #selSTT      { width: 165px; }
-    #selTTS      { width: 165px; }
-    #selVoice    { width: 120px; }
-    #selLanguage { width: 195px; }
+    /* Compact widths so all 7 selectors fit without horizontal scroll */
+    #selScenario { width: 160px; }
+    #selLLM      { width: 140px; }
+    #selSTT      { width: 130px; }
+    #selTTS      { width: 135px; }
+    #selVoice    { width: 95px; }
+    #selLanguage { width: 110px; }
+    #selKB       { width: 130px; }
 
     .toolbar-brand {
       display: flex;
@@ -179,6 +180,57 @@
       height: 24px;
       background: var(--border);
       margin: 0 0.25rem;
+    }
+
+    /* Info Tooltips */
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--text-2);
+      font-size: 10px;
+      font-weight: 700;
+      cursor: help;
+      margin-left: 4px;
+      transition: background 0.2s, color 0.2s;
+      user-select: none;
+      vertical-align: middle;
+    }
+    .info-icon:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    #globalTooltip {
+      position: fixed;
+      background: #181b26;
+      color: #f1f5f9;
+      padding: 7px 11px;
+      border: 1px solid var(--border-hover);
+      border-radius: 7px;
+      font-size: 0.73rem;
+      font-weight: 400;
+      white-space: normal;
+      width: max-content;
+      max-width: 250px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.85);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(2px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      z-index: 9999999;
+      line-height: 1.4;
+      text-align: left;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    #globalTooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .toolbar-spacer { flex: 1; }
@@ -979,12 +1031,538 @@
       .toolbar-sep { display: none; }
       .split-panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
       .pane { border-right: none; border-bottom: 1px solid var(--border); }
+      .kb-panel { width: 100vw; }
+    }
+
+    /* ── KB Selector (multi-select dropdown in config bar) ──── */
+    #selKB { width: 180px; }
+
+    /* ── KB Management Panel (slide-over) ─────────────────── */
+    .kb-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      z-index: 500;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 250ms ease;
+    }
+    .kb-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .kb-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(520px, 90vw);
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+      z-index: 501;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .kb-overlay.open .kb-panel { transform: translateX(0); }
+
+    .kb-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .kb-panel-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .kb-panel-close {
+      background: none; border: none; color: var(--text-2);
+      font-size: 1.2rem; cursor: pointer; padding: 0.25rem;
+      border-radius: 6px;
+      transition: all var(--transition);
+    }
+    .kb-panel-close:hover { color: var(--text); background: var(--surface-3); }
+
+    .kb-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 1.25rem;
+    }
+
+    /* Create KB form */
+    .kb-create-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      padding: 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+    .kb-create-form input, .kb-create-form textarea {
+      font-family: inherit;
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem 0.75rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .kb-create-form input:focus, .kb-create-form textarea:focus {
+      border-color: var(--primary);
+    }
+    .kb-create-form input::placeholder, .kb-create-form textarea::placeholder {
+      color: var(--text-3);
+    }
+    .kb-create-form textarea { resize: vertical; min-height: 48px; }
+    .kb-create-btn {
+      align-self: flex-end;
+      padding: 0.45rem 1.1rem;
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--primary);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .kb-create-btn:hover { background: var(--primary-h); transform: translateY(-1px); }
+    .kb-create-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* KB cards */
+    .kb-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .kb-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 0.9rem 1rem;
+      transition: border-color var(--transition);
+    }
+    .kb-card:hover { border-color: var(--border-hover); }
+    .kb-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+    }
+    .kb-card-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .kb-card-actions {
+      display: flex;
+      gap: 0.25rem;
+    }
+    .kb-card-actions button {
+      background: none; border: none;
+      color: var(--text-3); cursor: pointer;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      transition: all var(--transition);
+    }
+    .kb-card-actions button:hover { color: var(--red); background: var(--red-bg); }
+    .kb-card-desc {
+      font-size: 0.78rem;
+      color: var(--text-3);
+      margin-bottom: 0.5rem;
+    }
+    .kb-card-meta {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.72rem;
+      color: var(--text-3);
+    }
+    .kb-card-meta span {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* Document list inside a KB card */
+    .kb-docs {
+      margin-top: 0.6rem;
+      padding-top: 0.6rem;
+      border-top: 1px solid var(--border);
+    }
+    .kb-doc-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.3rem 0;
+      font-size: 0.78rem;
+    }
+    .kb-doc-name {
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .kb-doc-status {
+      font-size: 0.68rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 8px;
+    }
+    .kb-doc-status.ready { background: var(--green-bg); color: var(--green); }
+    .kb-doc-status.processing { background: rgba(245,158,11,0.1); color: var(--amber); }
+    .kb-doc-status.error { background: var(--red-bg); color: var(--red); }
+    .kb-doc-delete {
+      background: none; border: none;
+      color: var(--text-3); cursor: pointer;
+      font-size: 0.72rem;
+      transition: color var(--transition);
+    }
+    .kb-doc-delete:hover { color: var(--red); }
+
+    /* Upload area */
+    .kb-upload {
+      margin-top: 0.5rem;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-3);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .kb-upload:hover, .kb-upload.dragover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-bg);
+    }
+    .kb-upload input { display: none; }
+    .kb-upload-progress {
+      margin-top: 0.4rem;
+      font-size: 0.72rem;
+      color: var(--amber);
+    }
+
+    /* ── RAG badge on messages ─────────────────────────── */
+    .rag-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-bg);
+      padding: 0.15rem 0.5rem;
+      border-radius: 8px;
+      margin-top: 0.3rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .rag-badge:hover { background: rgba(99,102,241,0.15); }
+    .rag-sources {
+      display: none;
+      margin-top: 0.35rem;
+      padding: 0.5rem 0.6rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.72rem;
+      color: var(--text-3);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .rag-sources.open { display: block; }
+    .rag-source-item {
+      padding: 0.3rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .rag-source-item:last-child { border-bottom: none; }
+    .rag-source-file { color: var(--cyan); font-weight: 500; }
+    .rag-source-score { color: var(--text-3); font-size: 0.68rem; }
+
+    /* ── History Tab ─────────────────────────────────────── */
+    .history-controls {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .history-filter {
+      font-family: inherit;
+      font-size: 0.78rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.35rem 0.6rem;
+      outline: none;
+    }
+    .history-filter:focus { border-color: var(--primary); }
+    .history-filter::placeholder { color: var(--text-3); }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+    .history-empty {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-3);
+      font-size: 0.88rem;
+    }
+    .history-empty .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    .history-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .history-card:hover {
+      border-color: var(--primary);
+      background: var(--surface-3);
+      transform: translateY(-1px);
+    }
+    .history-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+    }
+    .history-card-title {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-right: 0.5rem;
+    }
+    .history-card-time {
+      font-size: 0.7rem;
+      color: var(--text-3);
+      white-space: nowrap;
+    }
+    .history-card-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      margin-bottom: 0.35rem;
+    }
+    .history-badge {
+      font-size: 0.65rem;
+      font-weight: 500;
+      padding: 0.1rem 0.45rem;
+      border-radius: 6px;
+      background: var(--surface-3);
+      color: var(--text-2);
+    }
+    .history-badge.kb { background: var(--primary-bg); color: var(--primary); }
+    .history-card-metrics {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.7rem;
+      color: var(--text-3);
+    }
+    .history-card-actions {
+      display: flex;
+      gap: 0.3rem;
+      margin-top: 0.3rem;
+    }
+    .history-card-actions button {
+      background: none; border: none;
+      color: var(--text-3); cursor: pointer;
+      font-size: 0.72rem; padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      transition: all var(--transition);
+    }
+    .history-card-actions button:hover { color: var(--red); background: var(--red-bg); }
+
+    /* History replay (read-only conversation view) */
+    .history-replay {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+    .history-replay.active { display: flex; }
+    .history-replay-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .history-replay-back {
+      background: none; border: none;
+      color: var(--text-2); cursor: pointer;
+      font-size: 0.88rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      transition: all var(--transition);
+    }
+    .history-replay-back:hover { color: var(--text); background: var(--surface-3); }
+    .history-replay-title {
+      font-weight: 600;
+      font-size: 0.85rem;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .history-replay-msgs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .history-replay-config {
+      padding: 0.5rem 1rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 0.72rem;
+      color: var(--text-3);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    /* Toolbar KB button */
+    .btn-kb {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 0.35rem 0.7rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .btn-kb:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-bg);
     }
   </style>
 </head>
 <body>
 <audio id="botAudio" autoplay style="display:none;"></audio>
 <div id="toasts"></div>
+
+<!-- KB Management Panel (slide-over) -->
+<div class="kb-overlay" id="kbOverlay">
+  <div class="kb-panel">
+    <div class="kb-panel-header">
+      <h2>📚 Knowledge Bases</h2>
+      <button class="kb-panel-close" id="kbPanelClose">✕</button>
+    </div>
+    <div class="kb-panel-body">
+      <div class="kb-create-form">
+        <input type="text" id="kbNameInput" placeholder="Knowledge base name" />
+        <textarea id="kbDescInput" placeholder="Description (optional)" rows="2"></textarea>
+        <button class="kb-create-btn" id="btnCreateKB">+ Create Knowledge Base</button>
+      </div>
+      <div class="kb-list" id="kbList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Document Details & Chunk Preview Modal -->
+<div class="kb-overlay" id="docViewerOverlay">
+  <div class="kb-panel" style="width: min(650px, 95vw);">
+    <div class="kb-panel-header">
+      <h2 id="docViewerTitle">📄 Document Details</h2>
+      <button class="kb-panel-close" id="docViewerClose">✕</button>
+    </div>
+    <div class="kb-panel-body" id="docViewerBody">
+    </div>
+  </div>
+</div>
+
+<!-- Agent Prompts & Configuration Slide-over Panel -->
+<div class="kb-overlay" id="agentConfigOverlay">
+  <div class="kb-panel" style="width: min(650px, 95vw);">
+    <div class="kb-panel-header">
+      <h2>⚙️ Agent Prompts & System Config</h2>
+      <button class="kb-panel-close" id="agentConfigClose">✕</button>
+    </div>
+    <div class="kb-panel-body" style="gap: 1.2rem; padding: 1.25rem;">
+
+      <!-- Active Scenario Prompt Section -->
+      <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+          <h3 style="font-size:0.85rem; font-weight:600; color:var(--text); display:flex; align-items:center;">
+            🎭 Selected Scenario System Prompt
+            <span class="info-icon" data-tooltip="Base persona & business rules given to the LLM for this scenario. Fully editable!">?</span>
+          </h3>
+          <button class="kb-create-btn" style="font-size:0.75rem; padding:0.25rem 0.75rem;" id="btnSaveScenarioPersona">💾 Save Scenario Persona</button>
+        </div>
+        <textarea id="scenarioPersonaInput" rows="5" style="width:100%; font-family:var(--font-sans); font-size:0.8rem; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem; outline:none; resize:vertical; line-height:1.45;"></textarea>
+      </div>
+
+      <!-- Custom Prompt Override Section -->
+      <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:1rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.6rem;">
+          <input type="checkbox" id="chkCustomPrompt" style="accent-color:var(--primary); cursor:pointer;">
+          <label for="chkCustomPrompt" style="font-size:0.85rem; font-weight:600; color:var(--text); cursor:pointer; display:flex; align-items:center;">
+            Enable Custom System Prompt Override
+            <span class="info-icon" data-tooltip="Bypass preset scenarios and test 100% custom system instructions for your agent.">?</span>
+          </label>
+        </div>
+        <textarea id="customPromptInput" rows="5" placeholder="Enter a custom system prompt to completely override scenario personas..." style="width:100%; font-family:var(--font-sans); font-size:0.8rem; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem; outline:none; resize:vertical; line-height:1.45;"></textarea>
+      </div>
+
+      <!-- Advanced Agent & RAG Parameters -->
+      <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:1rem; display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:1rem;">
+        <div>
+          <label style="font-size:0.75rem; font-weight:600; color:var(--text-2); display:flex; align-items:center; margin-bottom:0.3rem;">
+            Top K RAG Chunks
+            <span class="info-icon" data-tooltip="Number of top-matching KB document passages sent to LLM per query (1 to 10).">?</span>
+          </label>
+          <input type="number" id="topKInput" min="1" max="10" value="5" style="width:100%; padding:0.4rem; font-size:0.8rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:var(--radius);">
+        </div>
+        <div>
+          <label style="font-size:0.75rem; font-weight:600; color:var(--text-2); display:flex; align-items:center; margin-bottom:0.3rem;">
+            Temperature (0.0 - 1.0)
+            <span class="info-icon" data-tooltip="Response randomness: 0.0 is deterministic and focused; 1.0 is creative and diverse.">?</span>
+          </label>
+          <input type="number" id="tempInput" min="0" max="1" step="0.1" value="0.7" style="width:100%; padding:0.4rem; font-size:0.8rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:var(--radius);">
+        </div>
+        <div>
+          <label style="font-size:0.75rem; font-weight:600; color:var(--text-2); display:flex; align-items:center; margin-bottom:0.3rem;">
+            Max Output Tokens
+            <span class="info-icon" data-tooltip="Upper limit on the number of tokens the model can generate per response.">?</span>
+          </label>
+          <input type="number" id="maxTokensInput" min="128" max="4096" step="128" value="1024" style="width:100%; padding:0.4rem; font-size:0.8rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:var(--radius);">
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <div class="shell">
   <!-- ═══ Toolbar ═══ -->
@@ -1012,6 +1590,14 @@
 
     <div class="toolbar-spacer"></div>
 
+    <!-- KB Management & Agent Config -->
+    <button class="btn-kb" id="btnAgentConfig" title="Configure Scenario Prompts & Agent Settings" style="margin-right:0.35rem;">
+      ⚙️ <span>Prompts</span>
+    </button>
+    <button class="btn-kb" id="btnKBPanel" title="Manage Knowledge Bases">
+      📚 <span>KBs</span>
+    </button>
+
     <!-- Mic mute (solo, shown while connected) -->
     <button class="btn-mic solo-only" id="btnMic" title="Mute/unmute your microphone">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -1029,13 +1615,13 @@
   <div class="config-bar solo-only" id="configBar">
     <!-- Scenario -->
     <div class="selector-group">
-      <span class="selector-label">Scenario</span>
+      <span class="selector-label">Scenario <span class="info-icon" title="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules." data-tooltip="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules.">?</span></span>
       <div class="selector-pill"><select id="selScenario"></select></div>
     </div>
 
     <!-- LLM -->
     <div class="selector-group">
-      <span class="selector-label">LLM</span>
+      <span class="selector-label">LLM <span class="info-icon" title="Language Model provider & model architecture for text generation & reasoning." data-tooltip="Language Model provider & model architecture for text generation & reasoning.">?</span></span>
       <div class="selector-pill">
         <select id="selLLM">
           <option value="google">Gemini 3.5 Flash</option>
@@ -1048,7 +1634,7 @@
 
     <!-- STT -->
     <div class="selector-group">
-      <span class="selector-label">STT</span>
+      <span class="selector-label">STT <span class="info-icon" title="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI)." data-tooltip="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI).">?</span></span>
       <div class="selector-pill">
         <select id="selSTT">
           <option value="sarvam">Sarvam Saaras v3</option>
@@ -1059,7 +1645,7 @@
 
     <!-- TTS -->
     <div class="selector-group">
-      <span class="selector-label">TTS</span>
+      <span class="selector-label">TTS <span class="info-icon" title="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs)." data-tooltip="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs).">?</span></span>
       <div class="selector-pill">
         <select id="selTTS">
           <option value="sarvam">Sarvam Bulbul v3</option>
@@ -1070,7 +1656,7 @@
 
     <!-- Voice -->
     <div class="selector-group">
-      <span class="selector-label">Voice</span>
+      <span class="selector-label">Voice <span class="info-icon" title="Voice actor timbre, gender, and acoustic style for spoken output." data-tooltip="Voice actor timbre, gender, and acoustic style for spoken output.">?</span></span>
       <div class="selector-pill">
         <select id="selVoice">
           <option value="aditya">Aditya</option>
@@ -1087,13 +1673,23 @@
 
     <!-- Language -->
     <div class="selector-group">
-      <span class="selector-label">Lang</span>
+      <span class="selector-label">Lang <span class="info-icon" title="Locks conversation language across transcription, LLM reasoning, and speech synthesis." data-tooltip="Locks conversation language across transcription, LLM reasoning, and speech synthesis.">?</span></span>
       <div class="selector-pill">
         <select id="selLanguage">
           <option value="en-IN">English</option>
           <option value="hi-IN">Hindi</option>
           <option value="te-IN">Telugu</option>
           <option value="ta-IN">Tamil</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Knowledge Base -->
+    <div class="selector-group">
+      <span class="selector-label">KB <span class="info-icon" title="Attach Knowledge Bases to retrieve relevant facts and ground agent answers via RAG." data-tooltip="Attach Knowledge Bases to retrieve relevant facts and ground agent answers via RAG.">?</span></span>
+      <div class="selector-pill">
+        <select id="selKB">
+          <option value="">None</option>
         </select>
       </div>
     </div>
@@ -1107,6 +1703,7 @@
         <div class="tab-buttons">
           <button class="conv-tab active" data-tab="audio">Test Audio</button>
           <button class="conv-tab" data-tab="llm">Test LLM</button>
+          <button class="conv-tab" data-tab="history">History</button>
           <button class="conv-tab" data-tab="config">{}</button>
           <button class="conv-tab" data-tab="events">Events</button>
           <button class="btn-ghost tab-action" id="btnClear" title="Clear the conversation, context, and cost/latency/token metrics (restarts a live call)">🗑 Clear</button>
@@ -1187,6 +1784,34 @@
 
       <!-- Events Tab -->
       <div id="viewEvents" class="conv-messages" style="display:none; padding:0.75rem 1rem;">
+      </div>
+
+      <!-- History Tab -->
+      <div id="viewHistory" class="conv-messages" style="display:none; padding:0; flex-direction:column;">
+        <div class="history-controls">
+          <select class="history-filter" id="historyFilterScenario">
+            <option value="">All Scenarios</option>
+          </select>
+          <select class="history-filter" id="historyFilterLLM">
+            <option value="">All Models</option>
+          </select>
+          <button class="btn-ghost" id="btnHistoryRefresh" title="Refresh history">↻ Refresh</button>
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="history-empty">
+            <div class="icon">📋</div>
+            <p>No conversations saved yet. Conversations auto-save when you disconnect or clear.</p>
+          </div>
+        </div>
+        <!-- Replay overlay -->
+        <div class="history-replay" id="historyReplay">
+          <div class="history-replay-header">
+            <button class="history-replay-back" id="btnReplayBack">← Back</button>
+            <span class="history-replay-title" id="replayTitle"></span>
+          </div>
+          <div class="history-replay-msgs" id="replayMsgs"></div>
+          <div class="history-replay-config" id="replayConfig"></div>
+        </div>
       </div>
 
       <!-- Text Input -->
@@ -1431,7 +2056,9 @@
   const viewLLM    = document.getElementById('viewLLM');
   const viewConfig = document.getElementById('viewConfig');
   const viewEvents = document.getElementById('viewEvents');
+  const viewHistory = document.getElementById('viewHistory');
   const jsonDisplay = document.getElementById('jsonDisplay');
+  const selKB       = document.getElementById('selKB');
 
   let client = null;
   let isConnected = false;
@@ -1445,11 +2072,18 @@
   let CONFIG = {
     providers: { llm: [], stt: [], tts: [] },
     voices: {},
-    languages: [{ code: 'en-IN', label: 'English' }],
-    scenarios: [{ value: 'generic', label: 'General Assistant' }],
+    languages: [{ code: 'en-IN', label: 'English (India)' }],
+    scenarios: [
+      { value: 'generic', label: 'General Assistant' },
+      { value: 'hotel', label: 'Hotel — Room Booking' },
+      { value: 'hospital', label: 'Hospital — Appointment Booking' },
+      { value: 'bank', label: 'Bank — Customer Support' },
+      { value: 'ecommerce', label: 'E-commerce — Order Support' },
+    ],
     pricing: { stt: {}, tts: {}, llm: {} },
     usd_inr: 88.0,
     voice_transport: 'webrtc',
+    knowledge_bases: [],
   };
 
   // ── Session usage (real, accumulated from pipeline metrics) ──
@@ -1689,10 +2323,22 @@
     fillSelect(selTTS, CONFIG.providers.tts, CONFIG.default_tts);
     fillVoices();
     fillLanguages();
+    fillKBSelector();
     updateSoloRealtimeUI();
     syncConfigDisplay();
     renderMetrics();
     panes.forEach(p => p.fillOptions());
+  }
+
+  function fillKBSelector() {
+    const kbs = CONFIG.knowledge_bases || [];
+    selKB.innerHTML = '<option value="">None</option>';
+    kbs.forEach(kb => {
+      const opt = document.createElement('option');
+      opt.value = kb.id;
+      opt.textContent = `📚 ${kb.name} (${kb.doc_count || 0} docs)`;
+      selKB.appendChild(opt);
+    });
   }
 
   selTTS.addEventListener('change', () => { fillVoices(); fillLanguages(); });
@@ -1776,8 +2422,15 @@
       viewLLM.style.display   = activeTab === 'llm' ? '' : 'none';
       viewConfig.style.display = activeTab === 'config' ? '' : 'none';
       viewEvents.style.display = activeTab === 'events' ? '' : 'none';
+      viewHistory.style.display = activeTab === 'history' ? 'flex' : 'none';
 
-      if (activeTab === 'llm') {
+      if (activeTab === 'history') {
+        btnConnect.style.display = 'none';
+        txtInput.disabled = true;
+        btnSend.disabled = true;
+        txtInput.placeholder = 'Switch to Test Audio or Test LLM to chat...';
+        loadHistory();
+      } else if (activeTab === 'llm') {
         btnConnect.style.display = 'none';
         txtInput.disabled = false;
         btnSend.disabled = false;
@@ -2289,8 +2942,10 @@
     const botEl = addMessage('bot', '', viewLLM);
     botEl.innerHTML = '<span class="typing-dots"><i></i><i></i><i></i></span>';
 
-    stClient.textContent = 'Sending...';
-    stClient.className = 'value neutral';
+    stClient.textContent = isConnected ? 'Connected' : 'Disconnected';
+    stClient.className = `value ${isConnected ? 'connected' : 'disconnected'}`;
+    stAgent.textContent = 'Thinking...';
+    stAgent.className = 'value neutral';
 
     try {
       const response = await fetch("/api/chat", {
@@ -2302,6 +2957,7 @@
           llm: selLLM.value,
           language: selLanguage.value,
           scenario: selScenario.value,
+          knowledge_base_ids: selKB.value ? [selKB.value] : [],
         })
       });
 
@@ -2343,6 +2999,8 @@
       console.error("Direct chat failed:", err);
       botEl.textContent = `Failed to connect to backend: ${err.message}`;
     } finally {
+      stAgent.textContent = isConnected ? 'Connected' : 'Disconnected';
+      stAgent.className = `value ${isConnected ? 'connected' : 'disconnected'}`;
       stClient.textContent = isConnected ? 'Connected' : 'Disconnected';
       stClient.className = `value ${isConnected ? 'connected' : 'disconnected'}`;
     }
@@ -2726,6 +3384,11 @@
               llm: els.llm.value,
               language: els.lang.value,
               scenario: els.scenario.value,
+              knowledge_base_ids: Array.from(els.kbSelect ? els.kbSelect.selectedOptions : []).map(o => o.value).filter(Boolean),
+              custom_system_prompt: (document.getElementById('chkCustomPrompt')?.checked ? document.getElementById('customPromptInput')?.value : null),
+              top_k: parseInt(document.getElementById('topKInput')?.value || 5, 10),
+              temperature: parseFloat(document.getElementById('tempInput')?.value || 0.7),
+              max_tokens: parseInt(document.getElementById('maxTokensInput')?.value || 1024, 10),
             }),
           });
           if (!response.ok) {
@@ -2859,6 +3522,708 @@
 
   // ── Init ───────────────────────────────────────────
   loadConfig();
+
+  // ═══════════════════════════════════════════════════
+  // Knowledge Base Management Panel
+  // ═══════════════════════════════════════════════════
+
+  const kbOverlay = document.getElementById('kbOverlay');
+  const btnKBPanel = document.getElementById('btnKBPanel');
+  const kbPanelClose = document.getElementById('kbPanelClose');
+  const kbList = document.getElementById('kbList');
+  const kbNameInput = document.getElementById('kbNameInput');
+  const kbDescInput = document.getElementById('kbDescInput');
+  const btnCreateKB = document.getElementById('btnCreateKB');
+
+  function openKBPanel() {
+    kbOverlay.classList.add('open');
+    refreshKBPanel();
+  }
+  function closeKBPanel() {
+    kbOverlay.classList.remove('open');
+  }
+
+  btnKBPanel.addEventListener('click', openKBPanel);
+  kbPanelClose.addEventListener('click', closeKBPanel);
+  kbOverlay.addEventListener('click', (e) => {
+    if (e.target === kbOverlay) closeKBPanel();
+  });
+
+  btnCreateKB.addEventListener('click', async () => {
+    const name = kbNameInput.value.trim();
+    if (!name) return;
+    btnCreateKB.disabled = true;
+    try {
+      await fetch('/api/kb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: kbDescInput.value.trim() }),
+      });
+      kbNameInput.value = '';
+      kbDescInput.value = '';
+      showToast(`Knowledge base "${name}" created`);
+      await refreshKBPanel();
+      // Refresh config to update the KB selector
+      await loadConfig();
+    } catch (e) {
+      showToast(`Failed to create KB: ${e.message}`, 'error');
+    } finally {
+      btnCreateKB.disabled = false;
+    }
+  });
+
+  async function refreshKBPanel() {
+    try {
+      const res = await fetch('/api/kb');
+      const kbs = await res.json();
+      renderKBList(kbs);
+    } catch (e) {
+      kbList.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:2rem;">Failed to load knowledge bases</div>';
+    }
+  }
+
+  function renderKBList(kbs) {
+    if (!kbs.length) {
+      kbList.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:2rem;font-size:0.85rem;">No knowledge bases yet. Create one above to get started.</div>';
+      return;
+    }
+    kbList.innerHTML = kbs.map(kb => `
+      <div class="kb-card" data-kb-id="${kb.id}">
+        <div class="kb-card-header">
+          <span class="kb-card-name">📚 ${escapeHtml(kb.name)}</span>
+          <div class="kb-card-actions">
+            <button onclick="duplicateKB('${kb.id}', '${escapeHtml(kb.name)}')" title="Duplicate/Clone this Knowledge Base">📋 Duplicate</button>
+            <button onclick="editKB('${kb.id}', '${escapeHtml(kb.name)}', '${escapeHtml(kb.description || '')}')" title="Edit KB Name & Description">✏️ Edit</button>
+            <button onclick="deleteKB('${kb.id}', '${escapeHtml(kb.name)}')" title="Delete this KB">🗑</button>
+          </div>
+        </div>
+        ${kb.description ? `<div class="kb-card-desc">${escapeHtml(kb.description)}</div>` : ''}
+        <div class="kb-card-meta">
+          <span>📄 ${kb.doc_count || 0} docs</span>
+          <span>🧩 ${kb.total_chunks || 0} chunks</span>
+        </div>
+        <div class="kb-docs" id="kbDocs-${kb.id}"></div>
+        <div class="kb-upload" onclick="this.querySelector('input').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="event.preventDefault();this.classList.remove('dragover');handleFileDrop(event,'${kb.id}')">
+          📎 Drop files here or click to upload (.txt, .md, .pdf)
+          <input type="file" accept=".txt,.md,.markdown,.pdf" multiple
+                 onchange="handleFileUpload(this.files,'${kb.id}')">
+        </div>
+        <div class="kb-upload-progress" id="kbProgress-${kb.id}"></div>
+      </div>
+    `).join('');
+
+    // Load docs for each KB
+    kbs.forEach(kb => loadKBDocs(kb.id));
+  }
+
+  async function loadKBDocs(kbId) {
+    const container = document.getElementById(`kbDocs-${kbId}`);
+    if (!container) return;
+    try {
+      const res = await fetch(`/api/kb/${kbId}/documents`);
+      const docs = await res.json();
+      if (!docs.length) {
+        container.innerHTML = '<div style="font-size:0.72rem;color:var(--text-3);padding:0.3rem 0;">No documents yet</div>';
+        return;
+      }
+      container.innerHTML = docs.map(d => `
+        <div class="kb-doc-row">
+          <span class="kb-doc-name" style="cursor:pointer;" onclick="viewDocument('${kbId}','${d.id}')" title="Click to view document content & chunks">
+            📄 ${escapeHtml(d.filename)}
+            <span class="kb-doc-status ${d.status}">${d.status}</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:0.4rem;">
+            <button class="btn-ghost" style="font-size:0.7rem;padding:0.1rem 0.35rem;border-radius:4px;" onclick="viewDocument('${kbId}','${d.id}')" title="View details & chunks">👁 View</button>
+            <button class="btn-ghost" style="font-size:0.7rem;padding:0.1rem 0.35rem;border-radius:4px;" onclick="renameDocument('${kbId}','${d.id}','${escapeHtml(d.filename)}')" title="Rename document">✏️ Rename</button>
+            <span style="font-size:0.68rem;color:var(--text-3)">${d.chunk_count || 0} chunks</span>
+            <button class="kb-doc-delete" onclick="deleteDoc('${kbId}','${d.id}','${escapeHtml(d.filename)}')" title="Delete">✕</button>
+          </span>
+        </div>
+      `).join('');
+    } catch (e) {
+      container.innerHTML = '<div style="font-size:0.72rem;color:var(--red)">Failed to load documents</div>';
+    }
+  }
+
+  // Document Details & Chunk Preview
+  const docViewerOverlay = document.getElementById('docViewerOverlay');
+  const docViewerClose = document.getElementById('docViewerClose');
+  const docViewerTitle = document.getElementById('docViewerTitle');
+  const docViewerBody = document.getElementById('docViewerBody');
+
+  if (docViewerClose) docViewerClose.addEventListener('click', () => docViewerOverlay.classList.remove('open'));
+  if (docViewerOverlay) docViewerOverlay.addEventListener('click', (e) => {
+    if (e.target === docViewerOverlay) docViewerOverlay.classList.remove('open');
+  });
+
+  // Agent Config & Prompt Panel
+  const agentConfigOverlay = document.getElementById('agentConfigOverlay');
+  const agentConfigClose = document.getElementById('agentConfigClose');
+  const btnAgentConfig = document.getElementById('btnAgentConfig');
+  const scenarioPersonaInput = document.getElementById('scenarioPersonaInput');
+  const btnSaveScenarioPersona = document.getElementById('btnSaveScenarioPersona');
+
+  if (btnAgentConfig) {
+    btnAgentConfig.addEventListener('click', async () => {
+      await loadScenarioPersona();
+      agentConfigOverlay.classList.add('open');
+    });
+  }
+  if (agentConfigClose) agentConfigClose.addEventListener('click', () => agentConfigOverlay.classList.remove('open'));
+  if (agentConfigOverlay) {
+    agentConfigOverlay.addEventListener('click', (e) => {
+      if (e.target === agentConfigOverlay) agentConfigOverlay.classList.remove('open');
+    });
+  }
+
+  let scenariosCatalog = {};
+  async function loadScenarioPersona() {
+    try {
+      const res = await fetch('/api/scenarios');
+      scenariosCatalog = await res.json();
+      const curKey = selScenario.value || 'generic';
+      if (scenariosCatalog[curKey]) {
+        scenarioPersonaInput.value = scenariosCatalog[curKey].persona || '';
+      }
+    } catch (e) {
+      console.warn('Failed to load scenarios', e);
+    }
+  }
+
+  if (selScenario) {
+    selScenario.addEventListener('change', () => {
+      loadScenarioPersona();
+    });
+  }
+
+  if (btnSaveScenarioPersona) {
+    btnSaveScenarioPersona.addEventListener('click', async () => {
+      const curKey = selScenario.value || 'generic';
+      const newPersona = scenarioPersonaInput.value.trim();
+      if (!newPersona) return;
+      try {
+        const res = await fetch(`/api/scenarios/${curKey}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ persona: newPersona }),
+        });
+        if (!res.ok) throw new Error('Save failed');
+        showToast(`Saved prompt persona for ${scenariosCatalog[curKey]?.label || curKey}`);
+      } catch (e) {
+        showToast(`Failed to save scenario prompt: ${e.message}`, 'error');
+      }
+    });
+  }
+
+  window.renameDocument = async function(kbId, docId, currentFilename) {
+    const newFilename = prompt('Rename document:', currentFilename);
+    if (!newFilename || newFilename.trim() === currentFilename) return;
+
+    try {
+      const res = await fetch(`/api/kb/${kbId}/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: newFilename.trim() }),
+      });
+      if (!res.ok) throw new Error('Rename failed');
+      showToast('Document renamed');
+      await refreshKBPanel();
+      const titleText = document.getElementById('docTitleText');
+      if (titleText) titleText.textContent = newFilename.trim();
+    } catch (e) {
+      showToast(`Failed to rename document: ${e.message}`, 'error');
+    }
+  };
+
+  window.duplicateKB = async function(kbId, name) {
+    showToast(`Duplicating "${name}"...`);
+    try {
+      const res = await fetch(`/api/kb/${kbId}/duplicate`, { method: 'POST' });
+      if (!res.ok) throw new Error('Duplicate failed');
+      const newKb = await res.json();
+      showToast(`Created duplicate "${newKb.name}"`);
+      await refreshKBPanel();
+      await loadConfig();
+    } catch (e) {
+      showToast(`Failed to duplicate KB: ${e.message}`, 'error');
+    }
+  };
+
+  window.editKB = async function(kbId, curName, curDesc) {
+    const name = prompt('Knowledge Base Name:', curName);
+    if (name === null) return;
+    const description = prompt('Description (optional):', curDesc);
+    if (description === null) return;
+
+    try {
+      await fetch(`/api/kb/${kbId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() || curName, description: (description || '').trim() }),
+      });
+      showToast('Knowledge Base updated');
+      await refreshKBPanel();
+      await loadConfig();
+    } catch (e) {
+      showToast(`Failed to update KB: ${e.message}`, 'error');
+    }
+  };
+
+  window.viewDocument = async function(kbId, docId) {
+    try {
+      docViewerTitle.textContent = '📄 Loading...';
+      docViewerBody.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-3);">Loading document details...</div>';
+      docViewerOverlay.classList.add('open');
+
+      const res = await fetch(`/api/kb/${kbId}/documents/${docId}`);
+      if (!res.ok) throw new Error('Document details not found');
+      const doc = await res.json();
+      docViewerTitle.innerHTML = `📄 <span id="docTitleText">${escapeHtml(doc.filename)}</span> <button class="btn-ghost" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-left:0.4rem;border-radius:4px;" onclick="renameDocument('${kbId}','${docId}',document.getElementById('docTitleText').textContent)">✏️ Rename</button>`;
+      
+      const chunks = doc.chunks || [];
+      const fullText = chunks.map(c => c.text).join('\n\n');
+
+      const renderView = () => {
+        const chunksHtml = chunks.map((c) => `
+          <div style="margin-bottom:0.75rem; padding:0.75rem; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-lg);">
+            <div style="font-weight:600; color:var(--primary); font-size:0.75rem; margin-bottom:0.4rem; display:flex; justify-content:space-between;">
+              <span>Chunk #${c.chunk_index + 1}</span>
+              <span>~${c.token_count || 0} tokens</span>
+            </div>
+            <div style="white-space:pre-wrap; word-break:break-word; color:var(--text); font-size:0.8rem; line-height:1.45;">${escapeHtml(c.text)}</div>
+          </div>
+        `).join('');
+
+        docViewerBody.innerHTML = `
+          <div style="margin-bottom:1rem; padding:0.6rem 0.8rem; background:var(--surface-3); border:1px solid var(--border); border-radius:var(--radius); display:flex; align-items:center; justify-content:space-between; font-size:0.75rem; color:var(--text-2);">
+            <div style="display:flex; gap:1rem;">
+              <span>Size: ${(doc.file_size / 1024).toFixed(1)} KB</span>
+              <span>Status: <strong class="kb-doc-status ${doc.status}">${doc.status}</strong></span>
+              <span>Chunks: ${doc.chunk_count}</span>
+            </div>
+            <button class="btn-ghost" style="font-size:0.75rem; padding:0.25rem 0.6rem;" id="btnEditDocText">✏️ Edit Text</button>
+          </div>
+          <h3 style="font-size:0.85rem; font-weight:600; margin-bottom:0.75rem; color:var(--text);">Extracted Text Chunks (${chunks.length})</h3>
+          ${chunksHtml || '<div style="color:var(--text-3);padding:1rem;text-align:center;">No chunks found for this document.</div>'}
+        `;
+
+        document.getElementById('btnEditDocText')?.addEventListener('click', renderEditor);
+      };
+
+      const renderEditor = () => {
+        docViewerBody.innerHTML = `
+          <div style="margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-2);">Edit Document Content:</span>
+            <div style="display:flex; gap:0.4rem;">
+              <button class="btn-ghost" style="font-size:0.75rem; padding:0.25rem 0.6rem;" id="btnCancelEdit">Cancel</button>
+              <button class="kb-create-btn" style="font-size:0.75rem; padding:0.25rem 0.8rem;" id="btnSaveDocText">💾 Save & Re-index</button>
+            </div>
+          </div>
+          <textarea id="editDocTextarea" rows="18" style="width:100%; font-family:var(--font-mono, monospace); font-size:0.8rem; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem; outline:none; resize:vertical; line-height:1.45;"></textarea>
+        `;
+
+        const textarea = document.getElementById('editDocTextarea');
+        textarea.value = fullText;
+
+        document.getElementById('btnCancelEdit')?.addEventListener('click', renderView);
+        document.getElementById('btnSaveDocText')?.addEventListener('click', async () => {
+          const newText = textarea.value;
+          const btn = document.getElementById('btnSaveDocText');
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+          try {
+            const updateRes = await fetch(`/api/kb/${kbId}/documents/${docId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: newText }),
+            });
+            if (!updateRes.ok) throw new Error('Failed to save document');
+            showToast('Document text updated and re-indexed');
+            await refreshKBPanel();
+            await loadConfig();
+            window.viewDocument(kbId, docId);
+          } catch (e) {
+            showToast(`Save failed: ${e.message}`, 'error');
+            btn.disabled = false;
+            btn.textContent = '💾 Save & Re-index';
+          }
+        });
+      };
+
+      renderView();
+    } catch (e) {
+      docViewerBody.innerHTML = `<div style="color:var(--red);padding:2rem;text-align:center;">Failed to load document: ${e.message}</div>`;
+    }
+  };
+
+  // Make these global for onclick handlers in template strings
+  window.deleteKB = async function(kbId, name) {
+    if (!confirm(`Delete knowledge base "${name}" and all its documents?`)) return;
+    try {
+      await fetch(`/api/kb/${kbId}`, { method: 'DELETE' });
+      showToast(`Deleted KB "${name}"`);
+      await refreshKBPanel();
+      await loadConfig();
+    } catch (e) {
+      showToast(`Failed to delete KB: ${e.message}`, 'error');
+    }
+  };
+
+  window.deleteDoc = async function(kbId, docId, filename) {
+    if (!confirm(`Delete document "${filename}"?`)) return;
+    try {
+      await fetch(`/api/kb/${kbId}/documents/${docId}`, { method: 'DELETE' });
+      showToast(`Deleted "${filename}"`);
+      await loadKBDocs(kbId);
+      await loadConfig();
+    } catch (e) {
+      showToast(`Failed to delete document: ${e.message}`, 'error');
+    }
+  };
+
+  window.handleFileDrop = function(event, kbId) {
+    const files = event.dataTransfer.files;
+    if (files.length) handleFileUpload(files, kbId);
+  };
+
+  window.handleFileUpload = async function(files, kbId) {
+    const progress = document.getElementById(`kbProgress-${kbId}`);
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (progress) progress.textContent = `Uploading & processing ${file.name} (${i + 1}/${files.length})...`;
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`/api/kb/${kbId}/documents`, {
+          method: 'POST',
+          body: formData,
+        });
+        const result = await res.json();
+        if (result.status === 'error') {
+          showToast(`Error processing ${file.name}: ${result.error}`, 'error');
+        } else {
+          showToast(`"${file.name}" processed: ${result.chunk_count} chunks`);
+        }
+      } catch (e) {
+        showToast(`Upload failed for ${file.name}: ${e.message}`, 'error');
+      }
+    }
+    if (progress) progress.textContent = '';
+    await loadKBDocs(kbId);
+    await refreshKBPanel();
+    await loadConfig();
+  };
+
+
+  // ═══════════════════════════════════════════════════
+  // Conversation History
+  // ═══════════════════════════════════════════════════
+
+  const historyList = document.getElementById('historyList');
+  const historyReplay = document.getElementById('historyReplay');
+  const replayTitle = document.getElementById('replayTitle');
+  const replayMsgs = document.getElementById('replayMsgs');
+  const replayConfig = document.getElementById('replayConfig');
+  const btnReplayBack = document.getElementById('btnReplayBack');
+  const historyFilterScenario = document.getElementById('historyFilterScenario');
+  const historyFilterLLM = document.getElementById('historyFilterLLM');
+  const btnHistoryRefresh = document.getElementById('btnHistoryRefresh');
+
+  btnHistoryRefresh.addEventListener('click', loadHistory);
+  btnReplayBack.addEventListener('click', () => {
+    historyReplay.classList.remove('active');
+  });
+  historyFilterScenario.addEventListener('change', loadHistory);
+  historyFilterLLM.addEventListener('change', loadHistory);
+
+  // Browser-specific persistent client ID for account/browser isolated history
+  let browserClientId = localStorage.getItem('playground_client_id');
+  if (!browserClientId) {
+    browserClientId = 'client_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
+    localStorage.setItem('playground_client_id', browserClientId);
+  }
+
+  async function loadHistory() {
+    const params = new URLSearchParams();
+    params.set('client_id', browserClientId);
+    if (historyFilterScenario.value) params.set('scenario', historyFilterScenario.value);
+    if (historyFilterLLM.value) params.set('llm_provider', historyFilterLLM.value);
+
+    try {
+      const res = await fetch(`/api/conversations?${params}`);
+      const data = await res.json();
+      renderHistoryList(data.conversations || []);
+      populateHistoryFilters(data.conversations || []);
+    } catch (e) {
+      historyList.innerHTML = '<div class="history-empty"><div class="icon">⚠️</div><p>Failed to load history</p></div>';
+    }
+  }
+
+  function populateHistoryFilters(conversations) {
+    // Populate scenario filter
+    const scenarios = [...new Set(conversations.map(c => c.scenario).filter(Boolean))];
+    const prevScenario = historyFilterScenario.value;
+    historyFilterScenario.innerHTML = '<option value="">All Scenarios</option>';
+    scenarios.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      historyFilterScenario.appendChild(opt);
+    });
+    if (prevScenario) historyFilterScenario.value = prevScenario;
+
+    // Populate LLM filter
+    const llms = [...new Set(conversations.map(c => c.llm_provider).filter(Boolean))];
+    const prevLLM = historyFilterLLM.value;
+    historyFilterLLM.innerHTML = '<option value="">All Models</option>';
+    llms.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l;
+      opt.textContent = l;
+      historyFilterLLM.appendChild(opt);
+    });
+    if (prevLLM) historyFilterLLM.value = prevLLM;
+  }
+
+  function renderHistoryList(conversations) {
+    if (!conversations.length) {
+      historyList.innerHTML = '<div class="history-empty"><div class="icon">📋</div><p>No conversations saved yet. Conversations auto-save when you disconnect or clear.</p></div>';
+      return;
+    }
+
+    historyList.innerHTML = conversations.map(c => {
+      const time = new Date(c.created_at + 'Z').toLocaleString();
+      const kbIds = c.knowledge_base_ids || [];
+      return `
+        <div class="history-card" onclick="viewConversation('${c.id}')">
+          <div class="history-card-header">
+            <span class="history-card-title">${escapeHtml(c.title || 'Untitled')}</span>
+            <span class="history-card-time">${time}</span>
+          </div>
+          <div class="history-card-badges">
+            <span class="history-badge">${c.scenario || 'generic'}</span>
+            <span class="history-badge">${c.llm_provider || ''}${c.llm_model ? ':' + c.llm_model : ''}</span>
+            <span class="history-badge">${c.mode || 'text'}</span>
+            ${kbIds.length ? `<span class="history-badge kb">📚 ${kbIds.length} KB${kbIds.length > 1 ? 's' : ''}</span>` : ''}
+          </div>
+          <div class="history-card-metrics">
+            <span>💰 $${(c.total_cost_usd || 0).toFixed(4)}</span>
+            <span>🔤 ${(c.total_tokens || 0).toLocaleString()} tok</span>
+            <span>⚡ ${c.avg_latency_ms ? Math.round(c.avg_latency_ms) + 'ms' : '—'}</span>
+            <span>⏱ ${c.duration_seconds ? Math.round(c.duration_seconds) + 's' : '—'}</span>
+          </div>
+          <div class="history-card-actions">
+            <button onclick="event.stopPropagation();deleteConversation('${c.id}')" title="Delete">🗑 Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  window.viewConversation = async function(convId) {
+    try {
+      const res = await fetch(`/api/conversations/${convId}`);
+      const conv = await res.json();
+
+      replayTitle.textContent = conv.title || 'Conversation';
+      replayMsgs.innerHTML = '';
+
+      const messages = conv.messages || [];
+      messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = `msg ${msg.role === 'user' ? 'user' : 'bot'}`;
+        div.innerHTML = `
+          <div class="msg-label">${msg.role === 'user' ? 'You' : 'Assistant'}</div>
+          <div class="msg-content"></div>
+          <div class="timestamp">${msg.timestamp || ''}</div>
+        `;
+        const contentEl = div.querySelector('.msg-content');
+        if (msg.role === 'assistant') {
+          contentEl.innerHTML = renderMarkdown(msg.content || '');
+        } else {
+          contentEl.textContent = msg.content || '';
+        }
+        replayMsgs.appendChild(div);
+      });
+
+      replayConfig.innerHTML = [
+        `<span class="history-badge">Scenario: ${conv.scenario}</span>`,
+        `<span class="history-badge">LLM: ${conv.llm_provider}${conv.llm_model ? ':' + conv.llm_model : ''}</span>`,
+        conv.stt_provider ? `<span class="history-badge">STT: ${conv.stt_provider}</span>` : '',
+        conv.tts_provider ? `<span class="history-badge">TTS: ${conv.tts_provider}</span>` : '',
+        `<span class="history-badge">Lang: ${conv.language}</span>`,
+        `<span class="history-badge">Mode: ${conv.mode}</span>`,
+        `<span class="history-badge">Cost: $${(conv.total_cost_usd || 0).toFixed(4)}</span>`,
+        `<span class="history-badge">Tokens: ${(conv.total_tokens || 0).toLocaleString()}</span>`,
+      ].filter(Boolean).join('');
+
+      historyReplay.classList.add('active');
+    } catch (e) {
+      showToast(`Failed to load conversation: ${e.message}`, 'error');
+    }
+  };
+
+  window.deleteConversation = async function(convId) {
+    if (!confirm('Delete this conversation?')) return;
+    try {
+      await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      showToast('Conversation deleted');
+      loadHistory();
+    } catch (e) {
+      showToast(`Failed to delete: ${e.message}`, 'error');
+    }
+  };
+
+  // ── Auto-save conversations ────────────────────────
+  // Collects messages from the active view and saves to history
+
+  function collectMessages(view) {
+    const msgs = [];
+    view.querySelectorAll('.msg').forEach(el => {
+      const role = el.classList.contains('user') ? 'user' : 'assistant';
+      const content = el.querySelector('.msg-content')?.textContent || '';
+      const timestamp = el.querySelector('.timestamp')?.textContent || '';
+      if (content.trim()) {
+        msgs.push({ role, content, timestamp });
+      }
+    });
+    return msgs;
+  }
+
+  function getSelectedKBIds() {
+    return selKB.value ? [selKB.value] : [];
+  }
+
+  async function autoSaveConversation(mode, view) {
+    const messages = collectMessages(view);
+    if (messages.length < 2) return; // Need at least one exchange
+
+    const llmProvider = selLLM.value.split(':')[0];
+    const llmModel = selLLM.value.includes(':') ? selLLM.value.split(':').slice(1).join(':') : '';
+    const costs = computeCosts();
+
+    const data = {
+      client_id: browserClientId,
+      scenario: selScenario.value,
+      llm_provider: llmProvider,
+      llm_model: llmModel,
+      stt_provider: mode === 'voice' ? selSTT.value : '',
+      tts_provider: mode === 'voice' ? selTTS.value : '',
+      voice: selVoice.value,
+      language: selLanguage.value,
+      knowledge_base_ids: getSelectedKBIds(),
+      mode,
+      total_cost_usd: costs.total || 0,
+      total_tokens: usage.promptTokens + usage.completionTokens,
+      prompt_tokens: usage.promptTokens,
+      completion_tokens: usage.completionTokens,
+      avg_latency_ms: usage.turnLatencyMs || 0,
+      duration_seconds: sessionStart ? (Date.now() - sessionStart) / 1000 : 0,
+      messages,
+      config_snapshot: {
+        llm: selLLM.value,
+        stt: selSTT.value,
+        tts: selTTS.value,
+        voice: selVoice.value,
+        language: selLanguage.value,
+        scenario: selScenario.value,
+        kb: getSelectedKBIds(),
+      },
+    };
+
+    try {
+      await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addEvent('history', 'Conversation auto-saved to history');
+    } catch (e) {
+      console.warn('Auto-save failed:', e);
+    }
+  }
+
+  // Hook into disconnect: auto-save voice conversations
+  const origOnDisconnected = null;
+  // We patch the clear handler to save before clearing
+  const origClearSolo = clearSoloConversation;
+  clearSoloConversation = function() {
+    // Save before clearing (if there's anything to save)
+    const voiceMsgs = collectMessages(viewAudio);
+    const textMsgs = collectMessages(viewLLM);
+    if (voiceMsgs.length >= 2) autoSaveConversation('voice', viewAudio);
+    if (textMsgs.length >= 2) autoSaveConversation('text', viewLLM);
+    origClearSolo();
+  };
+
+  // Save on page unload
+  window.addEventListener('beforeunload', () => {
+    const voiceMsgs = collectMessages(viewAudio);
+    const textMsgs = collectMessages(viewLLM);
+    if (voiceMsgs.length >= 2) {
+      navigator.sendBeacon('/api/conversations', JSON.stringify({
+        scenario: selScenario.value,
+        llm_provider: selLLM.value.split(':')[0],
+        mode: 'voice',
+        messages: voiceMsgs,
+      }));
+    }
+    if (textMsgs.length >= 2) {
+      navigator.sendBeacon('/api/conversations', JSON.stringify({
+        scenario: selScenario.value,
+        llm_provider: selLLM.value.split(':')[0],
+        mode: 'text',
+        messages: textMsgs,
+      }));
+    }
+  });
+
+  // ── Global Floating Tooltip Handler (bypasses container overflow clipping) ──
+  const globalTooltip = document.createElement('div');
+  globalTooltip.id = 'globalTooltip';
+  document.body.appendChild(globalTooltip);
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('[data-tooltip]');
+    if (!target) {
+      globalTooltip.classList.remove('visible');
+      return;
+    }
+
+    const text = target.getAttribute('data-tooltip');
+    if (!text) return;
+
+    globalTooltip.textContent = text;
+    globalTooltip.classList.add('visible');
+
+    const rect = target.getBoundingClientRect();
+    const tooltipRect = globalTooltip.getBoundingClientRect();
+
+    // Vertical placement: place below if near top of window, else place above
+    let top = rect.bottom + 6;
+    if (top + tooltipRect.height > window.innerHeight - 10) {
+      top = rect.top - tooltipRect.height - 6;
+    }
+
+    // Horizontal placement: center relative to target icon/element, clamp within screen bounds
+    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+    if (left < 10) left = 10;
+    if (left + tooltipRect.width > window.innerWidth - 10) {
+      left = window.innerWidth - tooltipRect.width - 10;
+    }
+
+    globalTooltip.style.top = `${top}px`;
+    globalTooltip.style.left = `${left}px`;
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('[data-tooltip]')) {
+      globalTooltip.classList.remove('visible');
+    }
+  });
 
 </script>
 

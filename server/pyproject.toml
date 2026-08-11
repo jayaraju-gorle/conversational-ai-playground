@@ -6,6 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "pipecat-ai[anthropic,cartesia,deepgram,openai,runner,silero,webrtc,google,sarvam,groq]>=1.4.0",
     "pipecatcloud",
+    "pymupdf>=1.25.0",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

@@ -1109,7 +1109,9 @@ if __name__ == "__main__":
 
     @app.get("/api/config")
     async def playground_config():
-        """Catalog the UI needs: providers, voices, languages, pricing, FX."""
+        """Catalog the UI needs: providers, voices, languages, pricing, FX, KBs."""
+        import knowledge_base as kb_mod
+
         usd_inr, fx_source = await get_usd_inr_rate()
         return {
             "default_llm": os.getenv("LLM_PROVIDER") or None,
@@ -1126,6 +1128,7 @@ if __name__ == "__main__":
             "usd_inr": usd_inr,
             "fx_source": fx_source,
             "ice_servers": client_ice_servers(),
+            "knowledge_bases": kb_mod.list_kbs(),
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────
@@ -1304,6 +1307,11 @@ if __name__ == "__main__":
         llm: str = "google"
         language: str = "en-IN"
         scenario: str = "generic"
+        knowledge_base_ids: list[str] = []
+        custom_system_prompt: str | None = None
+        temperature: float = 0.7
+        max_tokens: int = 1024
+        top_k: int = 5
 
     def _chat_response(content, usage=None, latency_ms=None, error=False, model=None):
         return {
@@ -1314,6 +1322,32 @@ if __name__ == "__main__":
             "error": error,
             "model": model,
         }
+
+    @app.get("/api/scenarios")
+    async def get_scenarios():
+        """Get scenarios catalog with personas and prompts."""
+        return {
+            k: {
+                "key": k,
+                "label": v["label"],
+                "persona": v["persona"],
+                "greeting": v.get("greeting", ""),
+                "sample": v.get("sample", []),
+            }
+            for k, v in SCENARIOS.items()
+        }
+
+    class ScenarioUpdateRequest(BaseModel):
+        persona: str
+
+    @app.put("/api/scenarios/{key}")
+    async def update_scenario(key: str, request: ScenarioUpdateRequest):
+        """Update a scenario persona."""
+        if key not in SCENARIOS:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Scenario not found"})
+        SCENARIOS[key]["persona"] = request.persona
+        return {"status": "updated", "scenario": SCENARIOS[key]}
 
     @app.post("/api/chat")
     async def chat_endpoint(request: ChatRequest):
@@ -1328,9 +1362,34 @@ if __name__ == "__main__":
             llm_provider = "openai"
             llm_model = None
         _, language_label = resolve_language(request.language)
-        system_instruction = build_system_instruction(
-            language_label, voice_mode=False, scenario=resolve_scenario(request.scenario)
-        )
+
+        if request.custom_system_prompt and request.custom_system_prompt.strip():
+            system_instruction = request.custom_system_prompt.strip()
+        else:
+            system_instruction = build_system_instruction(
+                language_label, voice_mode=False, scenario=resolve_scenario(request.scenario)
+            )
+
+        # RAG: inject knowledge base context if KBs are selected
+        rag_context = ""
+        rag_passages = []
+        top_k_chunks = request.top_k or 5
+        if request.knowledge_base_ids:
+            import knowledge_base as kb_mod
+            try:
+                rag_passages = await kb_mod.retrieve(
+                    request.knowledge_base_ids, request.message, top_k=top_k_chunks
+                )
+                rag_context = kb_mod.build_rag_context(rag_passages)
+                if rag_context:
+                    kb_override_instruction = (
+                        "INSTRUCTION: The user has selected a Knowledge Base. "
+                        "You MUST act as the assistant for the Knowledge Base entity and answer strictly using the Knowledge Base information below. "
+                        "Do NOT use preset hotel, hospital, or bank scenario details when answering questions about contact info, email, location, hours, or products."
+                    )
+                    system_instruction = f"{kb_override_instruction}\n\n{rag_context}\n\n{system_instruction}"
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed: {e}")
 
         t_start = time.monotonic()
 
@@ -1497,4 +1556,199 @@ if __name__ == "__main__":
             logger.error(f"{provider_name} API error: {e}")
             return _chat_response(f"Error calling {provider_name} API: {e}", error=True)
 
-    main()
+    # ══════════════════════════════════════════════════════════════════════
+    # Knowledge Base API
+    # ══════════════════════════════════════════════════════════════════════
+
+    from fastapi import File, UploadFile
+
+    class KBCreateRequest(BaseModel):
+        name: str
+        description: str = ""
+
+    @app.post("/api/kb")
+    async def create_kb(request: KBCreateRequest):
+        """Create a new knowledge base."""
+        import knowledge_base as kb_mod
+        return kb_mod.create_kb(request.name, request.description)
+
+    @app.get("/api/kb")
+    async def list_kbs():
+        """List all knowledge bases."""
+        import knowledge_base as kb_mod
+        return kb_mod.list_kbs()
+
+    class KBUpdateRequest(BaseModel):
+        name: str
+        description: str = ""
+
+    @app.put("/api/kb/{kb_id}")
+    async def update_kb(kb_id: str, request: KBUpdateRequest):
+        """Update a knowledge base name and description."""
+        import knowledge_base as kb_mod
+        result = kb_mod.update_kb(kb_id, request.name, request.description)
+        if not result:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
+        return result
+
+    @app.post("/api/kb/{kb_id}/duplicate")
+    async def duplicate_kb(kb_id: str):
+        """Duplicate/clone an existing knowledge base."""
+        import knowledge_base as kb_mod
+        result = kb_mod.duplicate_kb(kb_id)
+        if not result:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
+        return result
+
+    @app.delete("/api/kb/{kb_id}")
+    async def delete_kb(kb_id: str):
+        """Delete a knowledge base."""
+        import knowledge_base as kb_mod
+        kb_mod.delete_kb(kb_id)
+        return {"status": "deleted"}
+
+    @app.post("/api/kb/{kb_id}/documents")
+    async def upload_document(kb_id: str, file: UploadFile = File(...)):
+        """Upload a document to a knowledge base."""
+        import knowledge_base as kb_mod
+
+        # Validate KB exists
+        if not kb_mod.get_kb(kb_id):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
+
+        # Validate file type
+        allowed = {".txt", ".md", ".markdown", ".pdf"}
+        from pathlib import Path as _Path
+        suffix = _Path(file.filename or "").suffix.lower()
+        if suffix not in allowed:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Unsupported file type '{suffix}'. Allowed: {', '.join(allowed)}"}
+            )
+
+        content = await file.read()
+        result = await kb_mod.upload_document(kb_id, file.filename, content)
+        return result
+
+    @app.get("/api/kb/{kb_id}/documents")
+    async def list_documents(kb_id: str):
+        """List documents in a knowledge base."""
+        import knowledge_base as kb_mod
+        return kb_mod.list_documents(kb_id)
+
+    @app.get("/api/kb/{kb_id}/documents/{doc_id}")
+    async def get_document(kb_id: str, doc_id: str):
+        """Get document details including text and chunks."""
+        import knowledge_base as kb_mod
+        doc = kb_mod.get_document_details(kb_id, doc_id)
+        if not doc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Document not found"})
+        return doc
+
+    class DocRenameRequest(BaseModel):
+        filename: str
+
+    @app.patch("/api/kb/{kb_id}/documents/{doc_id}")
+    async def rename_document(kb_id: str, doc_id: str, request: DocRenameRequest):
+        """Rename a document in a knowledge base."""
+        import knowledge_base as kb_mod
+        result = kb_mod.rename_document(kb_id, doc_id, request.filename)
+        if not result:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Document not found"})
+        return result
+
+    class DocUpdateRequest(BaseModel):
+        text: str
+
+    @app.put("/api/kb/{kb_id}/documents/{doc_id}")
+    async def update_document_text(kb_id: str, doc_id: str, request: DocUpdateRequest):
+        """Update a document's text, re-chunking and re-embedding."""
+        import knowledge_base as kb_mod
+        result = await kb_mod.update_document_text(kb_id, doc_id, request.text)
+        if not result:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Document not found"})
+        return result
+
+    @app.delete("/api/kb/{kb_id}/documents/{doc_id}")
+    async def delete_document(kb_id: str, doc_id: str):
+        """Delete a document from a knowledge base."""
+        import knowledge_base as kb_mod
+        kb_mod.delete_document(kb_id, doc_id)
+        return {"status": "deleted"}
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Conversation History API
+    # ══════════════════════════════════════════════════════════════════════
+
+    class ConversationSaveRequest(BaseModel):
+        title: str = ""
+        scenario: str = "generic"
+        llm_provider: str = ""
+        llm_model: str = ""
+        stt_provider: str = ""
+        tts_provider: str = ""
+        voice: str = ""
+        language: str = "en-IN"
+        knowledge_base_ids: list[str] = []
+        mode: str = "text"
+        total_cost_usd: float = 0.0
+        total_tokens: int = 0
+        prompt_tokens: int = 0
+        completion_tokens: int = 0
+        avg_latency_ms: float = 0.0
+        duration_seconds: float = 0.0
+        messages: list[dict] = []
+        config_snapshot: dict = {}
+        client_id: str = ""
+
+    @app.post("/api/conversations")
+    async def save_conversation(request: ConversationSaveRequest):
+        """Save a conversation."""
+        import conversation_store as conv_mod
+        return conv_mod.save_conversation(request.model_dump())
+
+    @app.get("/api/conversations")
+    async def list_conversations(
+        scenario: str | None = None,
+        llm_provider: str | None = None,
+        mode: str | None = None,
+        client_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        """List conversations with optional filters."""
+        import conversation_store as conv_mod
+        return conv_mod.list_conversations(
+            scenario=scenario, llm_provider=llm_provider,
+            mode=mode, client_id=client_id, limit=limit, offset=offset,
+        )
+
+    @app.get("/api/conversations/{conv_id}")
+    async def get_conversation(conv_id: str):
+        """Get a single conversation."""
+        import conversation_store as conv_mod
+        result = conv_mod.get_conversation(conv_id)
+        if not result:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Conversation not found"})
+        return result
+
+    @app.delete("/api/conversations/{conv_id}")
+    async def delete_conversation(conv_id: str):
+        """Delete a conversation."""
+        import conversation_store as conv_mod
+        conv_mod.delete_conversation(conv_id)
+        return {"status": "deleted"}
+
+    if __name__ == "__main__":
+        import sys
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        main()

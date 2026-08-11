@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Playground runtime data (SQLite DB, uploaded KB files, logs)
+server/data/
+*.log
+
 # C extensions
 *.so
 
