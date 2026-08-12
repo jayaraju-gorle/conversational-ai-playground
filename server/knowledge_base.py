@@ -64,7 +64,16 @@ def list_kbs() -> list[dict]:
         if not kbs:
             # Auto-seed sample KBs if database is empty
             seed_sample_kbs()
-            return list_kbs()
+            rows = conn.execute("""
+                SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
+                       COUNT(d.id) AS doc_count,
+                       COALESCE(SUM(d.chunk_count), 0) AS total_chunks
+                FROM knowledge_bases kb
+                LEFT JOIN documents d ON d.kb_id = kb.id AND d.status = 'ready'
+                GROUP BY kb.id
+                ORDER BY kb.created_at DESC
+            """).fetchall()
+            kbs = [dict(r) for r in rows]
         return kbs
     finally:
         conn.close()
@@ -72,7 +81,13 @@ def list_kbs() -> list[dict]:
 
 def seed_sample_kbs():
     """Seed sample knowledge bases for all playground scenarios if they don't already exist."""
-    existing_names = {r["name"] for r in list_kbs()} if get_connection().execute("SELECT count(*) FROM knowledge_bases").fetchone()[0] > 0 else set()
+    conn = get_connection()
+    try:
+        count = conn.execute("SELECT count(*) FROM knowledge_bases").fetchone()[0]
+        if count > 0:
+            return
+    finally:
+        conn.close()
 
     samples = [
         {
@@ -118,44 +133,43 @@ def seed_sample_kbs():
    - Raw green mango pulp, roasted cumin, mint leaves, and sparkling soda.
 
 ## 📋 Policies & Information
-- **Reservations**: Recommended for weekends. Tables held for up to 15 minutes past booking time.
-- **Dietary Options**: Vegan, Jain, and Gluten-Free options clearly marked. Custom spice levels available on request.
-- **Payment**: All major credit/debit cards, UPI, and cash accepted. 5% service charge optional.
-- **Parking**: Valet parking available free of charge for all guests."""
+- **Reservations**: Recommended on weekends. Tables held for up to 15 minutes.
+- **Dietary Options**: Vegan, Jain, and Gluten-Free dishes clearly marked on menu.
+- **Valet Parking**: Complimentary valet parking available at restaurant entrance.
+- **Private Dining**: Hall available for private events up to 25 guests."""
         },
         {
             "name": "Grand Meridian Hotel & Resort",
-            "desc": "Room rates, check-in policies, amenities, spa, and shuttle services for The Grand Meridian.",
-            "filename": "grand_meridian_hotel_info.md",
-            "content": """# The Grand Meridian Hotel & Resort — Information & Rates
+            "desc": "Room rates, check-in policies, amenities, dining, spa, and shuttle service details.",
+            "filename": "grand_meridian_guide.md",
+            "content": """# Grand Meridian Hotel & Resort — Guest Directory
 
-## 🏨 General Overview
+## 🏨 Hotel Overview
 - **Hotel Name**: The Grand Meridian Hotel & Resort
-- **Category**: 5-Star Luxury Business & Resort Hotel
-- **Location**: 100 Grand Boulevard, City Center, Bangalore 560025
-- **Phone**: +91 80 1234 5678
+- **Address**: 100 Ocean Drive, Marine District, Mumbai 400021
+- **Phone**: +91 22 6789 0000
 - **Email**: reservations@grandmeridianhotel.com
-- **Check-in Time**: 2:00 PM
-- **Check-out Time**: 11:00 AM (Late check-out available upon request)
+- **Website**: www.grandmeridianhotel.com
 
-## 🛌 Room Types & Nightly Rates
-1. **Deluxe Room** — ₹6,500 / $79 per night
-   - King or Twin bed, city skyline view, complimentary high-speed Wi-Fi, marble bathroom with rain shower, buffet breakfast included.
-2. **Executive Suite** — ₹11,000 / $132 per night
-   - Separate living lounge, pool view, complimentary executive lounge access, evening cocktail hours, luxury tub, buffet breakfast included.
-3. **Family Quad Suite** — ₹9,000 / $108 per night
-   - Two queen beds, interconnecting kids lounge, breakfast included for 4 guests.
+## 🛌 Room Types & Rates (Breakfast Included)
+1. **Deluxe Room** — ₹6,500 ($79) / night
+   - 350 sq.ft, King or Twin beds, City view, Smart TV, Work desk, Marble bathroom.
+2. **Executive Suite** — ₹11,000 ($132) / night
+   - 650 sq.ft, Sea view, Living room, King bed, Nespresso machine, Executive Lounge access.
+3. **Family Room** — ₹9,000 ($108) / night
+   - 500 sq.ft, Two Queen beds, Connecting room option, Kid-friendly amenities.
 
-## 🏊 Amenities & Guest Services
+## ⏰ Check-In & Check-Out
+- **Check-In Time**: 2:00 PM
+- **Check-Out Time**: 11:00 AM
+- **Early Check-In / Late Check-Out**: Subject to availability (Complimentary up to 2 hours for Gold members).
+
+## 🏊 Amenities & Services
+- **Wi-Fi**: High-speed complimentary Wi-Fi across hotel premises.
 - **Swimming Pool & Fitness Center**: Open daily 6:00 AM – 10:00 PM (Complimentary for guests).
 - **Lotus Spa**: Open daily 9:00 AM – 9:00 PM (Aromatherapy, Ayurvedic massages, facial treatments).
 - **Airport Shuttle**: Available 24/7 upon request (₹1,200 / $15 per vehicle per trip).
-- **Dining**: Meridian All-Day Dining Restaurant (6:30 AM – 11:00 PM) & Sky Lounge Bar (5:00 PM – 1:00 AM).
-
-## 📋 Booking & Cancellation Policies
-- **Cancellation Policy**: Free cancellation up to 24 hours prior to check-in. One night charge applies for late cancellations or no-shows.
-- **ID Requirement**: Valid government-issued photo ID (Passport, Aadhaar, Driving License) required at check-in.
-- **Payment**: Major credit cards (Visa, MasterCard, Amex), UPI, and net banking accepted."""
+- **Dining**: Meridian All-Day Dining Restaurant (6:30 AM – 11:00 PM) & Sky Lounge Bar (5:00 PM – 1:00 AM)."""
         },
         {
             "name": "Sunrise Multi-Speciality Hospital",
@@ -250,15 +264,54 @@ def seed_sample_kbs():
         }
     ]
 
-    import asyncio
     for s in samples:
-        if s["name"] not in existing_names:
+        try:
+            kb = create_kb(s["name"], s["desc"])
+            kb_id = kb["id"]
+            doc_id = uuid.uuid4().hex[:12]
+            filename = s["filename"]
+            content_text = s["content"]
+            content_bytes = content_text.encode("utf-8")
+
+            # Save physical file
+            kb_dir = KB_FILES_DIR / kb_id
+            kb_dir.mkdir(parents=True, exist_ok=True)
+            file_path = kb_dir / f"{doc_id}.md"
+            file_path.write_bytes(content_bytes)
+
+            c = get_connection()
             try:
-                kb = create_kb(s["name"], s["desc"])
-                asyncio.run(upload_document(kb["id"], s["filename"], s["content"].encode("utf-8")))
-                logger.info(f"Seeded sample KB: '{s['name']}' (id={kb['id']})")
-            except Exception as e:
-                logger.warning(f"Failed to seed sample KB '{s['name']}': {e}")
+                c.execute(
+                    """INSERT INTO documents (id, kb_id, filename, file_size, content_type, chunk_count, status)
+                       VALUES (?, ?, ?, ?, ?, ?, 'ready')""",
+                    (doc_id, kb_id, filename, len(content_bytes), "text/markdown", 0),
+                )
+                c.commit()
+
+                # Chunk & TF-IDF Embed synchronously
+                chunks = _chunk_text(content_text)
+                embeddings = _tfidf_embeddings(chunks)
+
+                for i, chunk_text in enumerate(chunks):
+                    chunk_id = uuid.uuid4().hex[:12]
+                    emb_json = json.dumps(embeddings[i])
+                    token_count = math.ceil(len(chunk_text) / 4)
+                    c.execute(
+                        """INSERT INTO chunks (id, doc_id, kb_id, chunk_index, text, embedding, token_count)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (chunk_id, doc_id, kb_id, i, chunk_text, emb_json, token_count),
+                    )
+
+                c.execute(
+                    "UPDATE documents SET chunk_count = ?, status = 'ready' WHERE id = ?",
+                    (len(chunks), doc_id),
+                )
+                c.commit()
+                logger.info(f"Seeded sample KB: '{s['name']}' (id={kb_id})")
+            finally:
+                c.close()
+        except Exception as e:
+            logger.warning(f"Failed to seed sample KB '{s['name']}': {e}")
 
 
 def get_kb(kb_id: str) -> dict | None:
