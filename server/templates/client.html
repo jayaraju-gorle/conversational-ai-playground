@@ -100,7 +100,7 @@
     #selVoice       { width: 95px; }
     #selLanguage    { width: 110px; }
     #selKB          { width: 130px; }
-    #selReservation { width: 190px; }
+    #selReservation { width: 230px; }
 
     .toolbar-brand {
       display: flex;
@@ -1098,11 +1098,18 @@
 
     /* ── KB Selector (multi-select dropdown in config bar) ──── */
     #selKB { width: 180px; }
-    #selReservation { width: 190px; }
-    /* Disabled (coming-soon) options style */
-    .selector-pill select option:disabled {
-      color: var(--text-3);
-      font-style: italic;
+    #selReservation { width: 230px; }
+    /* Reservation & Optgroup dropdown styling */
+    .selector-pill select optgroup {
+      background: var(--surface);
+      color: var(--primary-h);
+      font-weight: 600;
+      font-style: normal;
+    }
+    .selector-pill select option {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 400;
     }
 
     /* ── KB Management Panel (slide-over) ─────────────────── */
@@ -1765,14 +1772,31 @@
 
     <!-- Reservation API -->
     <div class="selector-group">
-      <span class="selector-label">Reservations <span class="info-icon" data-tooltip="Reservation API partner for booking actions. Dummy mode simulates reservations locally without calling external APIs.">?</span></span>
+      <span class="selector-label">Reservations <span class="info-icon" data-tooltip="Connect live reservation APIs (OpenTable, Resy, Calendly, Booking.com) or plug your custom backend to power the AI agent with live bookings.">?</span></span>
       <div class="selector-pill"><select id="selReservation">
-        <option value="dummy">🔧 Dummy (Built-in)</option>
-        <option value="dineout" disabled>🍽️ Dineout — Coming Soon</option>
-        <option value="eazydiner" disabled>🍷 EazyDiner — Coming Soon</option>
-        <option value="oyo" disabled>🏨 OYO — Coming Soon</option>
-        <option value="practo" disabled>🏥 Practo — Coming Soon</option>
-        <option value="opentable" disabled>🌐 OpenTable — Coming Soon</option>
+        <optgroup label="Local Simulation">
+          <option value="dummy">🔧 Built-in Dummy Engine (Local Mock)</option>
+        </optgroup>
+        <optgroup label="Custom Backend Integration">
+          <option value="custom">🔌 Custom REST / Webhook API (Plug &amp; Play)</option>
+        </optgroup>
+        <optgroup label="Restaurant &amp; Dining APIs">
+          <option value="opentable">🌐 OpenTable API — Ready to Connect</option>
+          <option value="resy">🍷 Resy OS API — Ready to Connect</option>
+          <option value="sevenrooms">🍴 SevenRooms API — Ready to Connect</option>
+        </optgroup>
+        <optgroup label="Scheduling &amp; Appointment APIs">
+          <option value="calendly">📅 Calendly v2 API — Ready to Connect</option>
+          <option value="calcom">📆 Cal.com API — Ready to Connect</option>
+          <option value="acuity">🏥 Acuity Scheduling API — Ready to Connect</option>
+        </optgroup>
+        <optgroup label="Hotel &amp; Accommodation APIs">
+          <option value="booking">🏨 Booking.com API — Ready to Connect</option>
+          <option value="amadeus">✈️ Amadeus Travel API — Ready to Connect</option>
+        </optgroup>
+        <optgroup label="Events &amp; Ticketing APIs">
+          <option value="eventbrite">🎟️ Eventbrite API — Ready to Connect</option>
+        </optgroup>
       </select></div>
     </div>
   </div>
@@ -2486,6 +2510,8 @@
       tts: rt ? null : selTTS.value,
       voice: selVoice.value,
       language: selLanguage.value,
+      kb: selKB.value || null,
+      reservation_api: selReservation.value,
       currency,
       transport: 'webrtc',
       pricing_usd: {
@@ -2517,6 +2543,19 @@
   selScenario.addEventListener('change', () => {
     chatHistory = [];
     addEvent('config', `Scenario switched to ${labelOf(selScenario)}; text chat history cleared`);
+  });
+
+  // Informative feedback on reservation API selection
+  selReservation.addEventListener('change', () => {
+    const val = selReservation.value;
+    const label = labelOf(selReservation);
+    if (val === 'custom') {
+      showToast('🔌 Custom System API: Plug & Play your backend (REST/Webhook) directly into the AI Agent!', 'info', 5000);
+    } else if (val !== 'dummy') {
+      showToast(`⚡ ${label}: Plug-in ready to connect live API endpoints for real-time bookings!`, 'info', 4500);
+    } else {
+      showToast('🔧 Built-in Dummy Engine active (Local simulation mode)', 'info', 3000);
+    }
   });
 
   // ── Tab switching ──────────────────────────────────
