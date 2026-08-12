@@ -22,6 +22,7 @@ import time
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -598,11 +599,12 @@ def build_system_instruction(
     language_label: str, voice_mode: bool = True, scenario: dict | None = None
 ) -> str:
     base = (scenario or SCENARIOS["generic"])["persona"]
-    if voice_mode:
+    if (voice_mode):
         base += (
             " Your responses will be spoken aloud, so avoid emojis, bullet"
-            " points, or other formatting that can't be spoken. Keep responses"
-            " brief and conversational."
+            " points, or other formatting that can't be spoken. Keep spoken"
+            " replies to 1–3 short sentences whenever possible — confirm"
+            " details in one compact sentence rather than long restatements."
         )
     else:
         base += " Keep responses helpful and brief."
@@ -896,7 +898,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     context = LLMContext()
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
-        user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(min_volume=0.05, start_secs=0.2, stop_secs=0.2))
+        ),
     )
 
     # Pipeline — cascade (STT → LLM → TTS) or realtime (S2S does both internally)
@@ -1066,6 +1070,24 @@ if __name__ == "__main__":
 
         _swrtc.SmallWebRTCRequestHandler.__init__ = _handler_init_with_turn
 
+    # Fix SmallWebRTCTrack receiver timeout bug: default 2.0s idle timeout
+    # disables the audio track receiver during long LLM responses / pauses,
+    # so microphone frames are dropped until the next recv() re-enables it —
+    # which presents as "mic stops working after the bot speaks".
+    from pipecat.transports.smallwebrtc.connection import SmallWebRTCTrack
+    _orig_track_init = SmallWebRTCTrack.__init__
+
+    def _track_init_fix_idle_timeout(self, receiver):
+        _orig_track_init(self, receiver)
+        self._idle_timeout = 3600.0  # Keep receiver enabled through long pauses
+
+    async def _idle_watcher_noop(self):
+        """Idle watcher disabled — do not turn off the audio receiver."""
+        return
+
+    SmallWebRTCTrack.__init__ = _track_init_fix_idle_timeout
+    SmallWebRTCTrack._idle_watcher = _idle_watcher_noop
+
     # Override root to serve our custom playground page
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root_playground():
@@ -1110,7 +1132,12 @@ if __name__ == "__main__":
     @app.get("/api/config")
     async def playground_config():
         """Catalog the UI needs: providers, voices, languages, pricing, FX, KBs."""
-        import knowledge_base as kb_mod
+        try:
+            import knowledge_base as kb_mod
+            kbs = kb_mod.list_kbs()
+        except Exception as e:
+            logger.warning(f"Could not list KBs for /api/config: {e}")
+            kbs = []
 
         usd_inr, fx_source = await get_usd_inr_rate()
         return {
@@ -1128,7 +1155,7 @@ if __name__ == "__main__":
             "usd_inr": usd_inr,
             "fx_source": fx_source,
             "ice_servers": client_ice_servers(),
-            "knowledge_bases": kb_mod.list_kbs(),
+            "knowledge_bases": kbs,
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────

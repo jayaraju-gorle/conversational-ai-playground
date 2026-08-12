@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    // Restore sidebar width before first paint to avoid layout flicker.
+    (function () {
+      try {
+        var saved = localStorage.getItem('playground-sidebar-width');
+        if (!saved) return;
+        var w = parseInt(saved, 10);
+        if (!w) return;
+        w = Math.max(250, Math.min(600, w));
+        document.documentElement.style.setProperty('--sidebar-width', w + 'px');
+      } catch (_) {}
+    })();
+  </script>
   <style>
     /* ── Design Tokens ────────────────────────────────── */
     :root {
@@ -33,6 +46,7 @@
       --radius:      10px;
       --radius-lg:   14px;
       --transition:  180ms ease;
+      --sidebar-width: 380px;
     }
 
     /* ── Reset ────────────────────────────────────────── */
@@ -78,14 +92,15 @@
     }
     .config-bar::-webkit-scrollbar { height: 4px; }
     .config-bar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-    /* Compact widths so all 7 selectors fit without horizontal scroll */
-    #selScenario { width: 160px; }
-    #selLLM      { width: 140px; }
-    #selSTT      { width: 130px; }
-    #selTTS      { width: 135px; }
-    #selVoice    { width: 95px; }
-    #selLanguage { width: 110px; }
-    #selKB       { width: 130px; }
+    /* Compact widths so all 8 selectors fit without horizontal scroll */
+    #selScenario    { width: 160px; }
+    #selLLM         { width: 140px; }
+    #selSTT         { width: 130px; }
+    #selTTS         { width: 135px; }
+    #selVoice       { width: 95px; }
+    #selLanguage    { width: 110px; }
+    #selKB          { width: 130px; }
+    #selReservation { width: 190px; }
 
     .toolbar-brand {
       display: flex;
@@ -418,21 +433,26 @@
     /* ── Main Content (Solo) ──────────────────────────── */
     .main {
       display: grid;
-      grid-template-columns: 1fr 300px;
+      grid-template-columns: 1fr 5px var(--sidebar-width);
       overflow: hidden;
+      min-height: 0;
     }
 
     @media (max-width: 900px) {
       .main { grid-template-columns: 1fr; }
       .sidebar { display: none; }
+      .sidebar-resize-handle { display: none; }
     }
 
     /* ── Conversation Panel ───────────────────────────── */
     .conversation {
       display: flex;
       flex-direction: column;
+      grid-column: 1;
+      grid-row: 1;
       border-right: 1px solid var(--border);
       overflow: hidden;
+      min-height: 0;
     }
 
     .conv-tabs {
@@ -757,12 +777,50 @@
     }
     .conv-input button svg { width: 16px; height: 16px; }
 
+    /* ── Sidebar Resize Handle ────────────────────────── */
+    .sidebar-resize-handle {
+      grid-column: 2;
+      grid-row: 1;
+      width: 5px;
+      cursor: col-resize;
+      background: transparent;
+      transition: background 0.2s ease;
+      position: relative;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+    .sidebar-resize-handle:hover,
+    .sidebar-resize-handle.dragging {
+      background: var(--primary);
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+    .sidebar-resize-handle::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px;
+      height: 32px;
+      border-radius: 2px;
+      background: var(--text-3);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .sidebar-resize-handle:hover::after,
+    .sidebar-resize-handle.dragging::after {
+      opacity: 0.6;
+    }
+
     /* ── Sidebar ──────────────────────────────────────── */
     .sidebar {
+      grid-column: 3;
+      grid-row: 1;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
       background: var(--surface);
+      min-height: 0;
     }
 
     .sidebar::-webkit-scrollbar { width: 5px; }
@@ -829,9 +887,8 @@
       height: 8%;
       transition: height 80ms ease;
     }
-    /* Bars are driven by a WebAudio analyser on the bot's audio stream
-       (see attachVisualizer) so they reflect real playback, not a looping
-       animation — flat bars while the bot speaks means no audio arrived. */
+    /* Bars: WebAudio analyser on bot remote stream / cloned local mic track.
+       Flat bars while something should be audible means audio isn't arriving. */
     .viz-caption {
       display: flex;
       justify-content: space-between;
@@ -865,17 +922,22 @@
     .config-item {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+      gap: 0.75rem;
       padding: 0.3rem 0;
       font-size: 0.82rem;
     }
-    .config-item .ck { color: var(--text-3); }
+    .config-item .ck {
+      color: var(--text-3);
+      flex-shrink: 0;
+    }
     .config-item .cv {
       color: var(--text-2);
       font-weight: 500;
       font-size: 0.78rem;
+      flex: 1;
+      min-width: 0;
       text-align: right;
-      max-width: 160px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1036,6 +1098,12 @@
 
     /* ── KB Selector (multi-select dropdown in config bar) ──── */
     #selKB { width: 180px; }
+    #selReservation { width: 190px; }
+    /* Disabled (coming-soon) options style */
+    .selector-pill select option:disabled {
+      color: var(--text-3);
+      font-style: italic;
+    }
 
     /* ── KB Management Panel (slide-over) ─────────────────── */
     .kb-overlay {
@@ -1375,23 +1443,24 @@
     .history-badge.kb { background: var(--primary-bg); color: var(--primary); }
     .history-card-metrics {
       display: flex;
+      align-items: center;
       gap: 0.75rem;
       font-size: 0.7rem;
       color: var(--text-3);
     }
-    .history-card-actions {
-      display: flex;
-      gap: 0.3rem;
-      margin-top: 0.3rem;
-    }
-    .history-card-actions button {
-      background: none; border: none;
-      color: var(--text-3); cursor: pointer;
-      font-size: 0.72rem; padding: 0.2rem 0.4rem;
+    .history-delete-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 0.2rem 0.4rem;
       border-radius: 4px;
       transition: all var(--transition);
+      flex-shrink: 0;
     }
-    .history-card-actions button:hover { color: var(--red); background: var(--red-bg); }
+    .history-delete-btn:hover { color: var(--red); background: var(--red-bg); }
 
     /* History replay (read-only conversation view) */
     .history-replay {
@@ -1615,13 +1684,13 @@
   <div class="config-bar solo-only" id="configBar">
     <!-- Scenario -->
     <div class="selector-group">
-      <span class="selector-label">Scenario <span class="info-icon" title="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules." data-tooltip="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules.">?</span></span>
+      <span class="selector-label">Scenario <span class="info-icon" data-tooltip="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules.">?</span></span>
       <div class="selector-pill"><select id="selScenario"></select></div>
     </div>
 
     <!-- LLM -->
     <div class="selector-group">
-      <span class="selector-label">LLM <span class="info-icon" title="Language Model provider & model architecture for text generation & reasoning." data-tooltip="Language Model provider & model architecture for text generation & reasoning.">?</span></span>
+      <span class="selector-label">LLM <span class="info-icon" data-tooltip="Language Model provider & model architecture for text generation & reasoning.">?</span></span>
       <div class="selector-pill">
         <select id="selLLM">
           <option value="google">Gemini 3.5 Flash</option>
@@ -1634,7 +1703,7 @@
 
     <!-- STT -->
     <div class="selector-group">
-      <span class="selector-label">STT <span class="info-icon" title="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI)." data-tooltip="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI).">?</span></span>
+      <span class="selector-label">STT <span class="info-icon" data-tooltip="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI).">?</span></span>
       <div class="selector-pill">
         <select id="selSTT">
           <option value="sarvam">Sarvam Saaras v3</option>
@@ -1645,7 +1714,7 @@
 
     <!-- TTS -->
     <div class="selector-group">
-      <span class="selector-label">TTS <span class="info-icon" title="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs)." data-tooltip="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs).">?</span></span>
+      <span class="selector-label">TTS <span class="info-icon" data-tooltip="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs).">?</span></span>
       <div class="selector-pill">
         <select id="selTTS">
           <option value="sarvam">Sarvam Bulbul v3</option>
@@ -1656,7 +1725,7 @@
 
     <!-- Voice -->
     <div class="selector-group">
-      <span class="selector-label">Voice <span class="info-icon" title="Voice actor timbre, gender, and acoustic style for spoken output." data-tooltip="Voice actor timbre, gender, and acoustic style for spoken output.">?</span></span>
+      <span class="selector-label">Voice <span class="info-icon" data-tooltip="Voice actor timbre, gender, and acoustic style for spoken output.">?</span></span>
       <div class="selector-pill">
         <select id="selVoice">
           <option value="aditya">Aditya</option>
@@ -1673,7 +1742,7 @@
 
     <!-- Language -->
     <div class="selector-group">
-      <span class="selector-label">Lang <span class="info-icon" title="Locks conversation language across transcription, LLM reasoning, and speech synthesis." data-tooltip="Locks conversation language across transcription, LLM reasoning, and speech synthesis.">?</span></span>
+      <span class="selector-label">Lang <span class="info-icon" data-tooltip="Locks conversation language across transcription, LLM reasoning, and speech synthesis.">?</span></span>
       <div class="selector-pill">
         <select id="selLanguage">
           <option value="en-IN">English</option>
@@ -1686,12 +1755,25 @@
 
     <!-- Knowledge Base -->
     <div class="selector-group">
-      <span class="selector-label">KB <span class="info-icon" title="Attach Knowledge Bases to retrieve relevant facts and ground agent answers via RAG." data-tooltip="Attach Knowledge Bases to retrieve relevant facts and ground agent answers via RAG.">?</span></span>
+      <span class="selector-label">KB <span class="info-icon" data-tooltip="Attach Knowledge Bases to retrieve relevant facts and ground agent answers via RAG.">?</span></span>
       <div class="selector-pill">
         <select id="selKB">
           <option value="">None</option>
         </select>
       </div>
+    </div>
+
+    <!-- Reservation API -->
+    <div class="selector-group">
+      <span class="selector-label">Reservations <span class="info-icon" data-tooltip="Reservation API partner for booking actions. Dummy mode simulates reservations locally without calling external APIs.">?</span></span>
+      <div class="selector-pill"><select id="selReservation">
+        <option value="dummy">🔧 Dummy (Built-in)</option>
+        <option value="dineout" disabled>🍽️ Dineout — Coming Soon</option>
+        <option value="eazydiner" disabled>🍷 EazyDiner — Coming Soon</option>
+        <option value="oyo" disabled>🏨 OYO — Coming Soon</option>
+        <option value="practo" disabled>🏥 Practo — Coming Soon</option>
+        <option value="opentable" disabled>🌐 OpenTable — Coming Soon</option>
+      </select></div>
     </div>
   </div>
 
@@ -1736,7 +1818,7 @@
               <div class="tooltip-row"><span>Transcription (STT)</span><span id="tipSTT">—</span></div>
               <div class="tooltip-row"><span>Inference (LLM)</span><span id="tipLLM">—</span></div>
               <div class="tooltip-row"><span>Speech Gen (TTS)</span><span id="tipTTS">—</span></div>
-              <div class="tooltip-note">Headline = time from you finishing speaking to bot audio. Rows are per-service time-to-first-byte reported by the pipeline.</div>
+              <div class="tooltip-note">Per turn only (not cumulative): time from you finishing speaking to the first bot audio. Rows are per-service time-to-first-byte. Long replies / tool calls raise the headline number.</div>
             </div>
           </div>
           <!-- Tokens -->
@@ -1824,8 +1906,11 @@
       </div>
     </div>
 
+    <!-- Sidebar Resize Handle -->
+    <div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="soloSidebar">
       <!-- Status -->
       <div class="sidebar-section">
         <div class="sidebar-title">Status</div>
@@ -1876,6 +1961,8 @@
         <div class="config-item"><span class="ck">TTS</span><span class="cv" id="cfgTTS">—</span></div>
         <div class="config-item"><span class="ck">Voice</span><span class="cv" id="cfgVoice">—</span></div>
         <div class="config-item"><span class="ck">Language</span><span class="cv" id="cfgLanguage">—</span></div>
+        <div class="config-item"><span class="ck">KB</span><span class="cv" id="cfgKB">—</span></div>
+        <div class="config-item"><span class="ck">Reservation API</span><span class="cv" id="cfgReservation">—</span></div>
       </div>
 
       <!-- Session -->
@@ -1946,16 +2033,21 @@
   const stAgent   = document.getElementById('stAgent');
   const visualizer = document.getElementById('visualizer');
 
-  // ── Real audio visualizers: WebAudio analysers on live streams ──────
-  // Bars show actual audio energy; flat bars while something should be
-  // audible means the audio isn't arriving/decoding in this browser.
+  // ── Audio activity meters ──────────────────────────────────────────
+  // Bot bars: WebAudio analyser on the remote playback stream.
+  // Mic bars: analyser on a *clone* of the local mic track — never attach
+  // WebAudio to the live send track (that can interfere with WebRTC capture).
+  // Note: onLocalAudioLevel / onRemoteAudioLevel are Daily-only; SmallWebRTC
+  // does not emit them, so we drive bars from MediaStream analysers here.
   function makeVizDriver(container) {
-    let ctx = null, raf = null;
+    let ctx = null, raf = null, ownedTracks = [];
     return {
-      attach(stream) {
+      attach(stream, { owned = [] } = {}) {
         this.detach();
+        ownedTracks = owned.slice();
         try {
           ctx = new (window.AudioContext || window.webkitAudioContext)();
+          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
           const source = ctx.createMediaStreamSource(stream);
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 64;
@@ -1973,6 +2065,7 @@
           draw();
         } catch (e) {
           console.error('Visualizer setup failed:', e);
+          addEvent('error', `Visualizer setup failed: ${e.message}`);
         }
       },
       detach() {
@@ -1980,6 +2073,8 @@
         raf = null;
         if (ctx) ctx.close().catch(() => {});
         ctx = null;
+        ownedTracks.forEach(t => { try { t.stop(); } catch (_) {} });
+        ownedTracks = [];
         container.querySelectorAll('.vis-bar').forEach(b => b.style.height = '8%');
       },
     };
@@ -1990,28 +2085,35 @@
   const micViz = makeVizDriver(micVisualizer);
   const vadPill = document.getElementById('vadPill');
   const vadText = document.getElementById('vadText');
-  let micVizStream = null;
 
   function attachVisualizer(stream) { botViz.attach(stream); }
   function detachVisualizer() { botViz.detach(); }
 
-  // Local mic meter (independent capture — shows what your mic picks up)
-  async function startMicViz() {
-    try {
-      micVizStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micViz.attach(micVizStream);
-    } catch (e) {
-      addEvent('error', `Mic meter unavailable: ${e.message}`);
-    }
+  function attachMicVisualizerFromTrack(track) {
+    // Clone so WebAudio metering never touches the live WebRTC send track
+    const clone = track.clone();
+    micViz.attach(new MediaStream([clone]), { owned: [clone] });
+  }
+  let micMeterAttached = false;
+  function ensureMicVisualizer(track) {
+    if (!track || micMeterAttached) return;
+    attachMicVisualizerFromTrack(track);
+    micMeterAttached = true;
   }
   function stopMicViz() {
     micViz.detach();
-    if (micVizStream) {
-      micVizStream.getTracks().forEach(t => t.stop());
-      micVizStream = null;
-    }
+    micMeterAttached = false;
     setVadActive(false);
     micVisualizer.classList.remove('muted');
+  }
+
+  function isLocalAudioTrack(track, participant) {
+    if (participant?.local === true) return true;
+    try {
+      const local = client?.tracks?.()?.local?.audio;
+      if (local && track && track.id === local.id) return true;
+    } catch (_) {}
+    return false;
   }
 
   // VAD badge: driven by the pipeline's user-speaking events, so it shows
@@ -2021,14 +2123,16 @@
     vadText.textContent = active ? 'speaking' : 'silent';
   }
 
-  const cfgScenario = document.getElementById('cfgScenario');
-  const cfgLLM    = document.getElementById('cfgLLM');
-  const cfgSTT    = document.getElementById('cfgSTT');
-  const cfgTTS    = document.getElementById('cfgTTS');
-  const cfgVoice  = document.getElementById('cfgVoice');
-  const cfgLanguage = document.getElementById('cfgLanguage');
-  const cfgSession  = document.getElementById('cfgSession');
-  const cfgDuration = document.getElementById('cfgDuration');
+  const cfgScenario    = document.getElementById('cfgScenario');
+  const cfgLLM         = document.getElementById('cfgLLM');
+  const cfgSTT         = document.getElementById('cfgSTT');
+  const cfgTTS         = document.getElementById('cfgTTS');
+  const cfgVoice       = document.getElementById('cfgVoice');
+  const cfgLanguage    = document.getElementById('cfgLanguage');
+  const cfgKB          = document.getElementById('cfgKB');
+  const cfgReservation = document.getElementById('cfgReservation');
+  const cfgSession     = document.getElementById('cfgSession');
+  const cfgDuration    = document.getElementById('cfgDuration');
 
   // Metrics DOM refs
   const metricCost = document.getElementById('metricCost');
@@ -2058,11 +2162,13 @@
   const viewEvents = document.getElementById('viewEvents');
   const viewHistory = document.getElementById('viewHistory');
   const jsonDisplay = document.getElementById('jsonDisplay');
-  const selKB       = document.getElementById('selKB');
+  const selKB          = document.getElementById('selKB');
+  const selReservation  = document.getElementById('selReservation');
 
   let client = null;
   let isConnected = false;
   let sessionStart = null;
+  let lastVoiceSessionDurationSec = null;
   let durationTimer = null;
   let activeTab = 'audio';
   let currency = 'USD';
@@ -2370,6 +2476,8 @@
     cfgTTS.textContent = rt ? 'Built into S2S' : labelOf(selTTS);
     cfgVoice.textContent = labelOf(selVoice);
     cfgLanguage.textContent = labelOf(selLanguage);
+    cfgKB.textContent = selKB.value ? labelOf(selKB) : 'None';
+    cfgReservation.textContent = labelOf(selReservation);
 
     jsonDisplay.textContent = JSON.stringify({
       scenario: selScenario.value,
@@ -2387,7 +2495,7 @@
       },
     }, null, 2);
   }
-  [selScenario, selLLM, selSTT, selTTS, selVoice, selLanguage].forEach(el =>
+  [selScenario, selLLM, selSTT, selTTS, selVoice, selLanguage, selKB, selReservation].forEach(el =>
     el.addEventListener('change', () => {
       syncConfigDisplay();
       renderMetrics();
@@ -2581,8 +2689,11 @@
   }
 
   // Turn-level transcript aggregation: consecutive fragments from the same
-  // speaker merge into one bubble instead of one bubble per sentence.
+  // speaker merge into one bubble. Late bot chunks after onBotStoppedSpeaking
+  // still stitch onto that turn — but only while it remains the latest
+  // message. A newer user message forces the next bot text into a new bubble.
   let curBotContent = null;
+  let lastBotContent = null;
   let curUserContent = null;
 
   // Per-turn tracking for the solo voice view: usage/cost baseline captured
@@ -2611,13 +2722,101 @@
     ], cost);
   }
 
+  function appendMsgText(el, text) {
+    if (!el) return;
+    const prev = el.textContent || '';
+    const t = text ?? '';
+    if (!prev) { el.textContent = t; return; }
+    // Don't insert a space before closing punctuation (e.g. late ")")
+    if (/^[)\]"'»,.;:!?%]/.test(t) || /^\s/.test(t)) {
+      el.textContent = prev + t;
+    } else {
+      el.textContent = `${prev} ${t}`;
+    }
+  }
+
+  function lastAudioMsg() {
+    const msgs = viewAudio.querySelectorAll('.msg');
+    return msgs.length ? msgs[msgs.length - 1] : null;
+  }
+
+  function lastBotBubbleIsLatest() {
+    const botMsg = lastBotContent?.closest?.('.msg');
+    return !!(botMsg && lastAudioMsg() === botMsg);
+  }
+
+  function prevBotLooksUnfinished() {
+    const prev = lastBotContent?.textContent || '';
+    // Open paren/bracket/quote, or cut off mid-clause
+    return /[(["'][^)\]"']*$/.test(prev) || /[,:;]\s*$/.test(prev) || /\b(or|and|like|at)\s*$/i.test(prev);
+  }
+
+  function isTrailingFragment(text, prevText) {
+    const t = (text || '').trim();
+    if (!t) return false;
+    if (/^[)\]"'»]+$/.test(t)) return true;
+    if (t.length <= 3 && /^[)\]"'»,.;:]+$/.test(t)) return true;
+    if (prevBotLooksUnfinished() && /^[)\]"'»]/.test(t) && t.length < 8) return true;
+    // Lone closer that completes an unfinished previous bubble
+    if (/[(]\s*$/.test(prevText || '') && t.startsWith(')')) return true;
+    return false;
+  }
+
+  // If a new-turn chunk begins with closers that belong on the previous bubble
+  // (e.g. ")Thanks…"), peel them back so turns stay clean.
+  function reclaimLeadingTrailFromPrev(text) {
+    if (!lastBotContent || !text) return text;
+    const prev = lastBotContent.textContent || '';
+    if (!prevBotLooksUnfinished() && !/[(["']/.test(prev)) return text;
+
+    const m = text.match(/^([)\]"'»]+)(\s*)([\s\S]*)/);
+    if (!m) return text;
+    // Only reclaim if previous side actually has an unmatched opener
+    const openers = (prev.match(/[(["']/g) || []).length;
+    const closers = (prev.match(/[)"'\]]/g) || []).length;
+    if (openers <= closers && !/[(["'][^)\]"']*$/.test(prev)) return text;
+
+    appendMsgText(lastBotContent, m[1]);
+    return (m[3] || '').replace(/^\s+/, '');
+  }
+
   function appendTranscript(sender, text) {
     if (sender === 'bot') {
       curUserContent = null;
+      let chunk = text;
+
+      // Tiny late closers (")" etc.) always go back to the previous bot turn,
+      // even after a user message has appeared — otherwise they glue onto the
+      // next reply (" )Thanks…").
+      if (
+        lastBotContent
+        && !curBotContent
+        && isTrailingFragment(chunk, lastBotContent.textContent)
+      ) {
+        appendMsgText(lastBotContent, chunk.trim());
+        viewAudio.scrollTop = viewAudio.scrollHeight;
+        return;
+      }
+
       if (curBotContent) {
-        curBotContent.textContent += ' ' + text;
+        appendMsgText(curBotContent, chunk);
+      } else if (
+        !soloBotSpeaking
+        && lastBotContent
+        && lastBotBubbleIsLatest()
+        && soloLastBotStopAt
+        && (Date.now() - soloLastBotStopAt) < 4000
+      ) {
+        appendMsgText(lastBotContent, chunk);
       } else {
-        curBotContent = addMessage('bot', text, viewAudio);
+        // New bot turn — peel any leading closer that still belongs on prev
+        chunk = reclaimLeadingTrailFromPrev(chunk);
+        if (!chunk) {
+          viewAudio.scrollTop = viewAudio.scrollHeight;
+          return;
+        }
+        curBotContent = addMessage('bot', chunk, viewAudio);
+        lastBotContent = curBotContent;
         soloOpenBot = {
           el: curBotContent,
           basePrompt: usage.promptTokens,
@@ -2627,9 +2826,10 @@
         updateSoloBotMeta();
       }
     } else {
+      // User message: seal the previous bot bubble for future turns.
       curBotContent = null;
       if (curUserContent) {
-        curUserContent.textContent += ' ' + text;
+        appendMsgText(curUserContent, text);
       } else {
         curUserContent = addMessage('user', text, viewAudio);
         soloOpenBot = null;   // bot turn is finished; its meta line is final
@@ -2689,9 +2889,28 @@
   }
 
   function stopDurationTimer() {
+    if (sessionStart) {
+      lastVoiceSessionDurationSec = (Date.now() - sessionStart) / 1000;
+    }
     clearInterval(durationTimer);
     durationTimer = null;
     sessionStart = null;
+  }
+
+  function getSessionDurationSeconds(mode) {
+    if (mode === 'voice') {
+      if (sessionStart) return (Date.now() - sessionStart) / 1000;
+      return lastVoiceSessionDurationSec || 0;
+    }
+    if (textSessionStart) return (Date.now() - textSessionStart) / 1000;
+    return lastTextSessionDurationSec || 0;
+  }
+
+  function formatHistoryDuration(seconds) {
+    if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return '—';
+    const totalSec = Math.max(1, Math.round(seconds));
+    if (totalSec < 60) return `${totalSec}s`;
+    return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`;
   }
 
   // ── Connect/Disconnect (Solo Test Audio) ───────────
@@ -2727,7 +2946,9 @@
 
     // Reset session metrics
     resetUsage();
+    lastVoiceSessionDurationSec = null;
     curBotContent = null;
+    lastBotContent = null;
     curUserContent = null;
     soloOpenBot = null;
     soloBotTurnsDone = 0;
@@ -2754,17 +2975,41 @@
             txtInput.disabled = false;
             btnSend.disabled = false;
             visualizer.classList.add('active');
-            startMicViz();
             // Selectors stay usable during the call — changing one restarts
             // the session with the new config (see the change listener).
             lockSelectors(false);
             setMicUI(false);
+            try {
+              // Ensure the transport mic is actually sending (enableMic:true at
+              // construct time can still leave it muted until explicitly enabled).
+              client.enableMic(true);
+            } catch (e) {
+              addEvent('error', `Mic enable failed: ${e.message}`);
+            }
+            // Fallback: if onTrackStarted(local) hasn't attached the mic meter yet,
+            // pull the local track from the client after ICE settles.
+            setTimeout(() => {
+              try {
+                if (!isConnected || micMeterAttached) return;
+                const local = client?.tracks?.()?.local?.audio;
+                if (local && local.readyState === 'live') {
+                  ensureMicVisualizer(local);
+                  addEvent('media', `Mic meter attached via tracks() fallback (id=${local.id})`);
+                }
+              } catch (_) {}
+            }, 800);
             btnMic.classList.add('visible');
             cfgSession.textContent = (Math.random().toString(36).slice(2, 10) + '…').toUpperCase();
             startDurationTimer();
             addEvent('connected', `LLM=${configData.llm} STT=${configData.stt} TTS=${configData.tts} Voice=${configData.voice} Lang=${configData.language}`);
           },
           onDisconnected: () => {
+            // Fire-and-forget save while messages / duration are still available
+            const voiceMsgs = collectMessages(viewAudio);
+            if (voiceMsgs.length >= 2) {
+              autoSaveConversation('voice', viewAudio).catch(() => {});
+            }
+
             isConnected = false;
             soloBotSpeaking = false;
             resolveSoloBotTurn();   // don't leave a simulation wait hanging
@@ -2825,10 +3070,12 @@
           },
           onTrackStarted: (track, participant) => {
             if (track.kind !== "audio") return;
-            // The SDK fires this for the local mic track too — attaching that
-            // to the speaker element would silence (or echo) the bot.
-            if (participant?.local) {
-              addEvent('media', 'Local mic track started (ignored for playback)');
+            // Never route the local mic into the speaker element — that echoes
+            // (or silences) bot playback. Detect local via participant flag AND
+            // by comparing against client.tracks().local.audio.
+            if (isLocalAudioTrack(track, participant)) {
+              addEvent('media', `Local mic track started (id=${track.id}, enabled=${track.enabled}, muted=${track.muted})`);
+              ensureMicVisualizer(track);
               return;
             }
             addEvent('media', 'Remote audio track started');
@@ -2858,6 +3105,15 @@
             addEvent('audio', 'Bot started speaking');
             soloBotSpeaking = true;
             if (soloTurnWait) soloTurnWait.armed = true;
+            // Resume the same bubble after a mid-turn pause; open a new one
+            // only when the user has spoken since the last bot message.
+            const last = lastAudioMsg();
+            const lastBotMsg = lastBotContent?.closest?.('.msg');
+            if (lastBotMsg && last === lastBotMsg) {
+              curBotContent = lastBotContent;
+            } else {
+              curBotContent = null;
+            }
             if (userStoppedTime) {
               usage.turnLatencyMs = Date.now() - userStoppedTime;
               userStoppedTime = null;
@@ -2870,14 +3126,17 @@
             soloBotSpeaking = false;
             soloLastBotStopAt = Date.now();
             soloBotTurnsDone += 1;
-            curBotContent = null;   // spoken turn done — next reply gets its own bubble
+            // Keep lastBotContent so late transcript chunks still land on this
+            // turn; clear curBotContent so a later user→bot cycle starts fresh.
+            curBotContent = null;
             if (soloTurnWait && soloTurnWait.armed) resolveSoloBotTurn();
           },
           onUserStartedSpeaking: () => {
             addEvent('audio', 'User started speaking');
             usage.speechStart = Date.now();
             setVadActive(true);
-            curBotContent = null;   // next bot transcript starts a fresh bubble
+            // Do not clear curBotContent / lastBotContent here — barge-in VAD
+            // often fires before the final bot transcript chunks arrive.
           },
         }
       });
@@ -2931,11 +3190,14 @@
 
   // ── Text chat history for direct LLM mode ──────────
   let chatHistory = [];
+  let textSessionStart = null;
+  let lastTextSessionDurationSec = null;
 
   // ── Solo message sending (used by input box AND the simulator) ──
 
   // Direct HTTP chat with the selected LLM (Test LLM tab)
   async function sendChatMessage(text) {
+    if (!textSessionStart) textSessionStart = Date.now();
     addMessage('user', text, viewLLM);
     const llmLabel = labelOf(selLLM);   // frozen at send time for the meta line
 
@@ -3084,7 +3346,12 @@
     viewAudio.innerHTML = '';
     viewLLM.innerHTML = '';
     chatHistory = [];
+    if (textSessionStart) {
+      lastTextSessionDurationSec = (Date.now() - textSessionStart) / 1000;
+    }
+    textSessionStart = null;
     curBotContent = null;
+    lastBotContent = null;
     curUserContent = null;
     soloOpenBot = null;
     // Fresh slate for the meters too: usage, cost, latency, duration
@@ -3940,6 +4207,17 @@
   historyFilterScenario.addEventListener('change', loadHistory);
   historyFilterLLM.addEventListener('change', loadHistory);
 
+  historyList.addEventListener('click', (e) => {
+    const deleteBtn = e.target.closest('.history-delete-btn');
+    if (deleteBtn) {
+      e.stopPropagation();
+      deleteConversation(deleteBtn.dataset.convId);
+      return;
+    }
+    const card = e.target.closest('.history-card[data-conv-id]');
+    if (card) viewConversation(card.dataset.convId);
+  });
+
   // Browser-specific persistent client ID for account/browser isolated history
   let browserClientId = localStorage.getItem('playground_client_id');
   if (!browserClientId) {
@@ -3998,8 +4276,9 @@
     historyList.innerHTML = conversations.map(c => {
       const time = new Date(c.created_at + 'Z').toLocaleString();
       const kbIds = c.knowledge_base_ids || [];
+      const durDisplay = formatHistoryDuration(c.duration_seconds);
       return `
-        <div class="history-card" onclick="viewConversation('${c.id}')">
+        <div class="history-card" data-conv-id="${c.id}">
           <div class="history-card-header">
             <span class="history-card-title">${escapeHtml(c.title || 'Untitled')}</span>
             <span class="history-card-time">${time}</span>
@@ -4014,17 +4293,15 @@
             <span>💰 $${(c.total_cost_usd || 0).toFixed(4)}</span>
             <span>🔤 ${(c.total_tokens || 0).toLocaleString()} tok</span>
             <span>⚡ ${c.avg_latency_ms ? Math.round(c.avg_latency_ms) + 'ms' : '—'}</span>
-            <span>⏱ ${c.duration_seconds ? Math.round(c.duration_seconds) + 's' : '—'}</span>
-          </div>
-          <div class="history-card-actions">
-            <button onclick="event.stopPropagation();deleteConversation('${c.id}')" title="Delete">🗑 Delete</button>
+            <span>⏱ ${durDisplay}</span>
+            <button type="button" class="history-delete-btn" data-conv-id="${c.id}" title="Delete">🗑 Delete</button>
           </div>
         </div>
       `;
     }).join('');
   }
 
-  window.viewConversation = async function(convId) {
+  async function viewConversation(convId) {
     try {
       const res = await fetch(`/api/conversations/${convId}`);
       const conv = await res.json();
@@ -4065,18 +4342,19 @@
     } catch (e) {
       showToast(`Failed to load conversation: ${e.message}`, 'error');
     }
-  };
+  }
 
-  window.deleteConversation = async function(convId) {
+  async function deleteConversation(convId) {
     if (!confirm('Delete this conversation?')) return;
     try {
-      await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast('Conversation deleted');
-      loadHistory();
+      await loadHistory();
     } catch (e) {
       showToast(`Failed to delete: ${e.message}`, 'error');
     }
-  };
+  }
 
   // ── Auto-save conversations ────────────────────────
   // Collects messages from the active view and saves to history
@@ -4098,15 +4376,20 @@
     return selKB.value ? [selKB.value] : [];
   }
 
-  async function autoSaveConversation(mode, view) {
-    const messages = collectMessages(view);
-    if (messages.length < 2) return; // Need at least one exchange
+  const savedConversationSignatures = new Set();
 
+  function getMessagesSignature(mode, messages) {
+    if (!messages || !messages.length) return '';
+    const firstMsg = messages[0]?.content || '';
+    const lastMsg = messages[messages.length - 1]?.content || '';
+    return `${mode}:${messages.length}:${firstMsg.slice(0, 40)}:${lastMsg.slice(0, 40)}`;
+  }
+
+  function buildConversationPayload(mode, messages) {
     const llmProvider = selLLM.value.split(':')[0];
     const llmModel = selLLM.value.includes(':') ? selLLM.value.split(':').slice(1).join(':') : '';
     const costs = computeCosts();
-
-    const data = {
+    return {
       client_id: browserClientId,
       scenario: selScenario.value,
       llm_provider: llmProvider,
@@ -4122,7 +4405,7 @@
       prompt_tokens: usage.promptTokens,
       completion_tokens: usage.completionTokens,
       avg_latency_ms: usage.turnLatencyMs || 0,
-      duration_seconds: sessionStart ? (Date.now() - sessionStart) / 1000 : 0,
+      duration_seconds: getSessionDurationSeconds(mode),
       messages,
       config_snapshot: {
         llm: selLLM.value,
@@ -4134,14 +4417,29 @@
         kb: getSelectedKBIds(),
       },
     };
+  }
+
+  async function autoSaveConversation(mode, view) {
+    const messages = collectMessages(view);
+    if (messages.length < 2) return; // Need at least one exchange
+
+    const sig = getMessagesSignature(mode, messages);
+    if (sig && savedConversationSignatures.has(sig)) {
+      return; // Already saved this exact conversation thread
+    }
+
+    const data = buildConversationPayload(mode, messages);
 
     try {
-      await fetch('/api/conversations', {
+      const res = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      addEvent('history', 'Conversation auto-saved to history');
+      if (res.ok) {
+        if (sig) savedConversationSignatures.add(sig);
+        addEvent('history', 'Conversation auto-saved to history');
+      }
     } catch (e) {
       console.warn('Auto-save failed:', e);
     }
@@ -4164,21 +4462,16 @@
   window.addEventListener('beforeunload', () => {
     const voiceMsgs = collectMessages(viewAudio);
     const textMsgs = collectMessages(viewLLM);
-    if (voiceMsgs.length >= 2) {
-      navigator.sendBeacon('/api/conversations', JSON.stringify({
-        scenario: selScenario.value,
-        llm_provider: selLLM.value.split(':')[0],
-        mode: 'voice',
-        messages: voiceMsgs,
-      }));
+    const voiceSig = getMessagesSignature('voice', voiceMsgs);
+    const textSig = getMessagesSignature('text', textMsgs);
+
+    if (voiceMsgs.length >= 2 && (!voiceSig || !savedConversationSignatures.has(voiceSig))) {
+      const blob = new Blob([JSON.stringify(buildConversationPayload('voice', voiceMsgs))], { type: 'application/json' });
+      navigator.sendBeacon('/api/conversations', blob);
     }
-    if (textMsgs.length >= 2) {
-      navigator.sendBeacon('/api/conversations', JSON.stringify({
-        scenario: selScenario.value,
-        llm_provider: selLLM.value.split(':')[0],
-        mode: 'text',
-        messages: textMsgs,
-      }));
+    if (textMsgs.length >= 2 && (!textSig || !savedConversationSignatures.has(textSig))) {
+      const blob = new Blob([JSON.stringify(buildConversationPayload('text', textMsgs))], { type: 'application/json' });
+      navigator.sendBeacon('/api/conversations', blob);
     }
   });
 
@@ -4225,6 +4518,49 @@
       globalTooltip.classList.remove('visible');
     }
   });
+
+  // ── Sidebar Drag-to-Resize ─────────────────────────────────────────────
+  (function initSidebarResize() {
+    const handle = document.getElementById('sidebarResizeHandle');
+    const soloMain = document.getElementById('soloMain');
+    if (!handle || !soloMain) return;
+
+    const MIN_WIDTH = 250;
+    const MAX_WIDTH = 600;
+    const STORAGE_KEY = 'playground-sidebar-width';
+    const root = document.documentElement;
+
+    function setSidebarWidth(px) {
+      root.style.setProperty('--sidebar-width', px + 'px');
+    }
+
+    let dragging = false;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const mainRect = soloMain.getBoundingClientRect();
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, mainRect.right - e.clientX));
+      setSidebarWidth(newWidth);
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const computed = getComputedStyle(root).getPropertyValue('--sidebar-width');
+      if (computed) localStorage.setItem(STORAGE_KEY, parseInt(computed, 10));
+    });
+  })();
 
 </script>
 

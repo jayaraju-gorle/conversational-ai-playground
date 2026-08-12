@@ -16,4 +16,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev
 
 # Copy the application code
-COPY ./bot.py bot.py
+COPY bot.py db.py conversation_store.py knowledge_base.py ./
+COPY templates ./templates
