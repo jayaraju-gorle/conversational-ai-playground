@@ -484,76 +484,6 @@ SCENARIOS = {
             "Okay, thank you for the help.",
         ],
     },
-    "restaurant": {
-        "label": "Restaurant — Table Reservation",
-        "persona": (
-            "You are the reservation assistant for Spice Garden, a family"
-            " restaurant serving Indian and Continental cuisine. Help callers"
-            " book, modify, or cancel table reservations. Collect one detail at"
-            " a time: the guest's name, party size, and preferred date and time."
-            " Resolve relative dates like 'this Saturday' to concrete dates"
-            " yourself, state your assumption, and proceed — do not ask for"
-            " exact calendar dates."
-            " The restaurant is open daily from 12 PM to 3:30 PM for lunch and"
-            " 7 PM to 11 PM for dinner. Tables seat up to 8; for larger groups,"
-            " offer the private dining hall which seats up to 25. This is a"
-            " product demo, so simulate realistic table availability —"
-            " occasionally a requested slot is full and you offer the nearest"
-            " alternatives. If the caller says any nearby time works or asks you"
-            " to confirm, pick the best available slot yourself and confirm it —"
-            " do not keep asking them to choose. Mention that guests can note"
-            " dietary preferences or special occasions like birthdays. Before"
-            " confirming, read back the full reservation details."
-        ),
-        "greeting": (
-            "Greet the caller as Spice Garden's reservation assistant and ask"
-            " how you can help."
-        ),
-        "sample": [
-            "Hi, I'd like to book a table for this Saturday evening.",
-            "We'll be 4 people, name is Anita Desai.",
-            "Around 8 PM, but anything close to that works for us.",
-            "It's my husband's birthday, so please note that too. Go ahead and"
-            " book whichever slot is closest.",
-            "Perfect, that all sounds right. Thank you!",
-        ],
-    },
-    "hotel": {
-        "label": "Hotel — Room Booking",
-        "persona": (
-            "You are the reservations assistant for The Grand Meridian, a"
-            " business and leisure hotel. Help callers book, modify, or cancel"
-            " room reservations. Collect one detail at a time: the guest's name,"
-            " check-in and check-out dates, number of guests, and room"
-            " preference. Room types are Deluxe (₹6,500 or $79 per night),"
-            " Executive Suite (₹11,000 or $132 per night), and Family Room"
-            " (₹9,000 or $108 per night); all rates include breakfast."
-            " Check-in is at 2 PM and check-out at 11 AM. When a caller gives a"
-            " relative timeframe like 'next weekend', resolve it to concrete"
-            " dates yourself, state your assumption, and proceed — do not ask"
-            " for exact calendar dates. This is a product"
-            " demo, so simulate realistic room availability — occasionally a"
-            " requested room type is sold out and you offer alternatives. If"
-            " the caller accepts an alternative or asks you to book whatever is"
-            " available, confirm it — do not keep asking them to choose."
-            " Answer common questions about amenities: free Wi-Fi, pool, gym,"
-            " airport shuttle on request. Before confirming, read back the full"
-            " booking details including dates, room type, and total price."
-        ),
-        "greeting": (
-            "Greet the caller as The Grand Meridian's reservations assistant"
-            " and ask how you can help."
-        ),
-        "sample": [
-            "Hello, I need a room for next weekend — Friday and Saturday"
-            " night, whatever dates those fall on.",
-            "It's for me and my wife, name is Arjun Mehta.",
-            "The Executive Suite sounds good. Does it have a king bed?",
-            "Please book it — or if the suite isn't available, the Family Room"
-            " is fine. And add the airport shuttle.",
-            "Perfect, that's all. Thanks!",
-        ],
-    },
     "generic": {
         "label": "General Assistant",
         "persona": (
@@ -635,6 +565,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     logger.info(f"Using language: {language_code} ({language_label})")
 
     scenario = resolve_scenario(body.get("scenario"))
+    persona_override = (body.get("persona") or "").strip()
+    if persona_override:
+        scenario = {**scenario, "persona": persona_override}
     logger.info(f"Using scenario: {scenario['label']}")
 
     # LLM provider resolves first: realtime (speech-to-speech) providers
@@ -651,9 +584,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     is_realtime = llm_provider in ("gemini-live", "openai-realtime", "openai-realtime-mini")
     logger.info(f"Using LLM provider: {llm_provider} model={llm_model} (realtime={is_realtime})")
 
-    system_instruction = build_system_instruction(
-        language_label, voice_mode=True, scenario=scenario
-    )
+    custom_prompt = (body.get("custom_system_prompt") or "").strip()
+    if custom_prompt:
+        system_instruction = (
+            custom_prompt
+            + " Your responses will be spoken aloud, so avoid emojis, bullet"
+            " points, or other formatting that can't be spoken. Keep spoken"
+            " replies to 1–3 short sentences whenever possible — confirm"
+            " details in one compact sentence rather than long restatements."
+        )
+    else:
+        system_instruction = build_system_instruction(
+            language_label, voice_mode=True, scenario=scenario
+        )
 
     stt = None
     tts = None
@@ -999,9 +942,14 @@ if __name__ == "__main__":
     import pathlib
 
     import aiohttp
-    from fastapi.responses import HTMLResponse
+    from fastapi import File, Request, UploadFile
+    from fastapi.responses import HTMLResponse, JSONResponse
     from pipecat.runner.run import app, main
     from pydantic import BaseModel
+
+    import auth as auth_mod
+    import conversation_store as conv_mod
+    import knowledge_base as kb_mod
 
     # ── TURN relay for WebRTC on hosts without inbound UDP (e.g. Cloud Run) ──
     # TURN_URLS is comma-separated, e.g.
@@ -1094,12 +1042,162 @@ if __name__ == "__main__":
         page = pathlib.Path(__file__).parent / "templates" / "client.html"
         return HTMLResponse(content=page.read_text(encoding="utf-8"))
 
+    def _cookie_secure(request: Request) -> bool:
+        forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+        if forwarded:
+            return forwarded == "https"
+        return request.url.scheme == "https"
+
+    def _set_session_cookie(response, request: Request, token: str) -> None:
+        response.set_cookie(
+            auth_mod.SESSION_COOKIE,
+            token,
+            httponly=True,
+            samesite="lax",
+            secure=_cookie_secure(request),
+            max_age=auth_mod.SESSION_DAYS * 24 * 3600,
+            path="/",
+        )
+
+    def _clear_session_cookie(response) -> None:
+        response.delete_cookie(auth_mod.SESSION_COOKIE, path="/")
+
+    def _tenant_or_401(request: Request) -> dict:
+        tenant = getattr(request.state, "tenant", None)
+        if tenant:
+            return tenant
+        tenant = auth_mod.tenant_from_session(
+            request.cookies.get(auth_mod.SESSION_COOKIE)
+        )
+        if not tenant:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return tenant
+
+    def _resolve_tenant_scenario(tenant_id: str, key: str | None) -> dict:
+        scenario = resolve_scenario(key)
+        override = auth_mod.get_scenario_persona(tenant_id, key or "generic")
+        if override:
+            return {**scenario, "persona": override}
+        return scenario
+
+    @app.middleware("http")
+    async def tenant_auth_middleware(request: Request, call_next):
+        path = request.url.path
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if path.startswith("/api/auth"):
+            return await call_next(request)
+        if path in ("/", "/favicon.ico") or path.startswith("/docs") or path.startswith("/openapi"):
+            return await call_next(request)
+        needs_auth = path == "/start" or path.startswith("/api/")
+        if needs_auth:
+            tenant = auth_mod.tenant_from_session(
+                request.cookies.get(auth_mod.SESSION_COOKIE)
+            )
+            if not tenant:
+                return JSONResponse({"error": "Not authenticated"}, status_code=401)
+            request.state.tenant = tenant
+        return await call_next(request)
+
+    class RegisterRequest(BaseModel):
+        email: str
+        password: str
+        org_name: str
+
+    class LoginRequest(BaseModel):
+        email: str
+        password: str
+
+    class SettingsPatch(BaseModel):
+        org_name: str | None = None
+        default_language: str | None = None
+        default_llm: str | None = None
+        default_stt: str | None = None
+        default_tts: str | None = None
+        default_voice: str | None = None
+        lab_enabled: bool | None = None
+        temperature: float | None = None
+        max_tokens: int | None = None
+        top_k: int | None = None
+        custom_system_prompt: str | None = None
+        use_custom_prompt: bool | None = None
+
+    def _auth_error(message: str, status: int = 400):
+        return JSONResponse({"error": message}, status_code=status)
+
+    @app.post("/api/auth/register")
+    async def auth_register(payload: RegisterRequest, request: Request):
+        email = payload.email.strip().lower()
+        org_name = payload.org_name.strip()
+        password = payload.password
+        if "@" not in email or "." not in email.split("@")[-1]:
+            return _auth_error("Enter a valid work email")
+        if len(password) < 8:
+            return _auth_error("Password must be at least 8 characters")
+        if len(org_name) < 2:
+            return _auth_error("Organisation name is required")
+        if auth_mod.email_taken(email):
+            return _auth_error("An account with that email already exists", 409)
+        try:
+            tenant = auth_mod.create_tenant(email, password, org_name)
+        except Exception as e:
+            logger.warning(f"Register failed: {e}")
+            return _auth_error("Could not create the workspace", 400)
+        try:
+            kb_mod.seed_sample_kbs(tenant["id"])
+        except Exception as e:
+            logger.warning(f"Could not seed sample KBs for tenant {tenant['id']}: {e}")
+        token = auth_mod.create_session(tenant["id"])
+        body = auth_mod.public_tenant({**tenant, "org_name": org_name})
+        response = JSONResponse({"tenant": body})
+        _set_session_cookie(response, request, token)
+        return response
+
+    @app.post("/api/auth/login")
+    async def auth_login(payload: LoginRequest, request: Request):
+        tenant = auth_mod.authenticate(payload.email, payload.password)
+        if not tenant:
+            return _auth_error("Invalid email or password", 401)
+        token = auth_mod.create_session(tenant["id"])
+        response = JSONResponse({"tenant": auth_mod.public_tenant(tenant)})
+        _set_session_cookie(response, request, token)
+        return response
+
+    @app.post("/api/auth/logout")
+    async def auth_logout(request: Request):
+        auth_mod.delete_session(request.cookies.get(auth_mod.SESSION_COOKIE))
+        response = JSONResponse({"ok": True})
+        _clear_session_cookie(response)
+        return response
+
+    @app.get("/api/auth/me")
+    async def auth_me(request: Request):
+        tenant = auth_mod.tenant_from_session(
+            request.cookies.get(auth_mod.SESSION_COOKIE)
+        )
+        if not tenant:
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        return {"tenant": auth_mod.public_tenant(tenant)}
+
+    @app.patch("/api/auth/settings")
+    async def auth_settings(payload: SettingsPatch, request: Request):
+        tenant = _tenant_or_401(request)
+        settings = auth_mod.update_settings(
+            tenant["id"], payload.model_dump(exclude_none=True)
+        )
+        return {"tenant": {**auth_mod.public_tenant(tenant), **settings}}
+
     # Dynamically filter out /client routes on application startup
     @app.on_event("startup")
     async def remove_client_routes():
         app.router.routes = [
             r for r in app.router.routes if getattr(r, "path", None) not in ("/client", "/client/")
         ]
+        try:
+            auth_mod.ensure_demo_tenant()
+        except Exception as e:
+            logger.warning(f"Could not ensure demo tenant on startup: {e}")
 
     # Live USD→INR rate from frankfurter.app (ECB reference rates; free, no
     # key), cached for 6 hours. USD_INR_RATE from .env is the offline fallback.
@@ -1130,20 +1228,24 @@ if __name__ == "__main__":
         return USD_INR_RATE, "fallback"
 
     @app.get("/api/config")
-    async def playground_config():
+    async def playground_config(request: Request):
         """Catalog the UI needs: providers, voices, languages, pricing, FX, KBs."""
+        tenant = _tenant_or_401(request)
         try:
-            import knowledge_base as kb_mod
-            kbs = kb_mod.list_kbs()
+            kbs = kb_mod.list_kbs(tenant["id"])
         except Exception as e:
             logger.warning(f"Could not list KBs for /api/config: {e}")
             kbs = []
 
         usd_inr, fx_source = await get_usd_inr_rate()
+        settings = auth_mod.get_settings(tenant["id"])
+        default_llm = settings.get("default_llm") or os.getenv("LLM_PROVIDER") or None
+        default_stt = settings.get("default_stt") or os.getenv("STT_PROVIDER") or None
+        default_tts = settings.get("default_tts") or os.getenv("TTS_PROVIDER") or None
         return {
-            "default_llm": os.getenv("LLM_PROVIDER") or None,
-            "default_stt": os.getenv("STT_PROVIDER") or None,
-            "default_tts": os.getenv("TTS_PROVIDER") or None,
+            "default_llm": default_llm,
+            "default_stt": default_stt,
+            "default_tts": default_tts,
             "providers": providers_with_availability(),
             "voices": VOICES,
             "languages": LANGUAGES,
@@ -1156,6 +1258,7 @@ if __name__ == "__main__":
             "fx_source": fx_source,
             "ice_servers": client_ice_servers(),
             "knowledge_bases": kbs,
+            "tenant": auth_mod.public_tenant(tenant),
         }
 
     # ── Model catalog sync check ─────────────────────────────────────────
@@ -1351,13 +1454,15 @@ if __name__ == "__main__":
         }
 
     @app.get("/api/scenarios")
-    async def get_scenarios():
-        """Get scenarios catalog with personas and prompts."""
+    async def get_scenarios(request: Request):
+        """Get scenarios catalog with personas and prompts (tenant overrides applied)."""
+        tenant = _tenant_or_401(request)
+        overrides = auth_mod.list_scenario_personas(tenant["id"])
         return {
             k: {
                 "key": k,
                 "label": v["label"],
-                "persona": v["persona"],
+                "persona": overrides.get(k, v["persona"]),
                 "greeting": v.get("greeting", ""),
                 "sample": v.get("sample", []),
             }
@@ -1368,17 +1473,19 @@ if __name__ == "__main__":
         persona: str
 
     @app.put("/api/scenarios/{key}")
-    async def update_scenario(key: str, request: ScenarioUpdateRequest):
-        """Update a scenario persona."""
+    async def update_scenario(key: str, request: ScenarioUpdateRequest, http_request: Request):
+        """Update this tenant's scenario persona (does not change other tenants)."""
+        tenant = _tenant_or_401(http_request)
         if key not in SCENARIOS:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Scenario not found"})
-        SCENARIOS[key]["persona"] = request.persona
-        return {"status": "updated", "scenario": SCENARIOS[key]}
+        auth_mod.upsert_scenario_persona(tenant["id"], key, request.persona)
+        scenario = {**SCENARIOS[key], "persona": request.persona}
+        return {"status": "updated", "scenario": scenario}
 
     @app.post("/api/chat")
-    async def chat_endpoint(request: ChatRequest):
+    async def chat_endpoint(request: ChatRequest, http_request: Request):
         """Direct text chat against the selected LLM, with real usage + latency."""
+        tenant = _tenant_or_401(http_request)
         llm_provider, llm_model = split_provider(
             request.llm or os.getenv("LLM_PROVIDER") or "google"
         )
@@ -1394,25 +1501,30 @@ if __name__ == "__main__":
             system_instruction = request.custom_system_prompt.strip()
         else:
             system_instruction = build_system_instruction(
-                language_label, voice_mode=False, scenario=resolve_scenario(request.scenario)
+                language_label,
+                voice_mode=False,
+                scenario=_resolve_tenant_scenario(tenant["id"], request.scenario),
             )
 
-        # RAG: inject knowledge base context if KBs are selected
+        # RAG: inject knowledge base context if KBs are selected (tenant-owned only)
         rag_context = ""
         rag_passages = []
         top_k_chunks = request.top_k or 5
-        if request.knowledge_base_ids:
-            import knowledge_base as kb_mod
+        owned_kb_ids = [
+            kid for kid in request.knowledge_base_ids
+            if kb_mod.get_kb(kid, tenant["id"])
+        ]
+        if owned_kb_ids:
             try:
                 rag_passages = await kb_mod.retrieve(
-                    request.knowledge_base_ids, request.message, top_k=top_k_chunks
+                    owned_kb_ids, request.message, top_k=top_k_chunks, tenant_id=tenant["id"]
                 )
                 rag_context = kb_mod.build_rag_context(rag_passages)
                 if rag_context:
                     kb_override_instruction = (
                         "INSTRUCTION: The user has selected a Knowledge Base. "
                         "You MUST act as the assistant for the Knowledge Base entity and answer strictly using the Knowledge Base information below. "
-                        "Do NOT use preset hotel, hospital, or bank scenario details when answering questions about contact info, email, location, hours, or products."
+                        "Do NOT use preset hospital, bank, or e-commerce scenario details when answering questions about contact info, email, location, hours, or products."
                     )
                     system_instruction = f"{kb_override_instruction}\n\n{rag_context}\n\n{system_instruction}"
             except Exception as e:
@@ -1587,71 +1699,71 @@ if __name__ == "__main__":
     # Knowledge Base API
     # ══════════════════════════════════════════════════════════════════════
 
-    from fastapi import File, UploadFile
+    def _require_kb(kb_id: str, tenant_id: str):
+        kb = kb_mod.get_kb(kb_id, tenant_id)
+        if not kb:
+            return None
+        return kb
 
     class KBCreateRequest(BaseModel):
         name: str
         description: str = ""
 
     @app.post("/api/kb")
-    async def create_kb(request: KBCreateRequest):
+    async def create_kb(payload: KBCreateRequest, request: Request):
         """Create a new knowledge base."""
-        import knowledge_base as kb_mod
-        return kb_mod.create_kb(request.name, request.description)
+        tenant = _tenant_or_401(request)
+        return kb_mod.create_kb(payload.name, payload.description, tenant_id=tenant["id"])
 
     @app.get("/api/kb")
-    async def list_kbs():
-        """List all knowledge bases."""
-        import knowledge_base as kb_mod
-        return kb_mod.list_kbs()
+    async def list_kbs(request: Request):
+        """List this tenant's knowledge bases."""
+        tenant = _tenant_or_401(request)
+        return kb_mod.list_kbs(tenant["id"])
 
     class KBUpdateRequest(BaseModel):
         name: str
         description: str = ""
 
     @app.put("/api/kb/{kb_id}")
-    async def update_kb(kb_id: str, request: KBUpdateRequest):
+    async def update_kb(kb_id: str, payload: KBUpdateRequest, request: Request):
         """Update a knowledge base name and description."""
-        import knowledge_base as kb_mod
-        result = kb_mod.update_kb(kb_id, request.name, request.description)
+        tenant = _tenant_or_401(request)
+        result = kb_mod.update_kb(
+            kb_id, payload.name, payload.description, tenant_id=tenant["id"]
+        )
         if not result:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         return result
 
     @app.post("/api/kb/{kb_id}/duplicate")
-    async def duplicate_kb(kb_id: str):
+    async def duplicate_kb(kb_id: str, request: Request):
         """Duplicate/clone an existing knowledge base."""
-        import knowledge_base as kb_mod
-        result = kb_mod.duplicate_kb(kb_id)
+        tenant = _tenant_or_401(request)
+        result = kb_mod.duplicate_kb(kb_id, tenant_id=tenant["id"])
         if not result:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         return result
 
     @app.delete("/api/kb/{kb_id}")
-    async def delete_kb(kb_id: str):
+    async def delete_kb(kb_id: str, request: Request):
         """Delete a knowledge base."""
-        import knowledge_base as kb_mod
-        kb_mod.delete_kb(kb_id)
+        tenant = _tenant_or_401(request)
+        if not kb_mod.delete_kb(kb_id, tenant_id=tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         return {"status": "deleted"}
 
     @app.post("/api/kb/{kb_id}/documents")
-    async def upload_document(kb_id: str, file: UploadFile = File(...)):
+    async def upload_document(kb_id: str, request: Request, file: UploadFile = File(...)):
         """Upload a document to a knowledge base."""
-        import knowledge_base as kb_mod
-
-        # Validate KB exists
-        if not kb_mod.get_kb(kb_id):
-            from fastapi.responses import JSONResponse
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
             return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
 
-        # Validate file type
         allowed = {".txt", ".md", ".markdown", ".pdf"}
         from pathlib import Path as _Path
         suffix = _Path(file.filename or "").suffix.lower()
         if suffix not in allowed:
-            from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=400,
                 content={"error": f"Unsupported file type '{suffix}'. Allowed: {', '.join(allowed)}"}
@@ -1662,18 +1774,21 @@ if __name__ == "__main__":
         return result
 
     @app.get("/api/kb/{kb_id}/documents")
-    async def list_documents(kb_id: str):
+    async def list_documents(kb_id: str, request: Request):
         """List documents in a knowledge base."""
-        import knowledge_base as kb_mod
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         return kb_mod.list_documents(kb_id)
 
     @app.get("/api/kb/{kb_id}/documents/{doc_id}")
-    async def get_document(kb_id: str, doc_id: str):
+    async def get_document(kb_id: str, doc_id: str, request: Request):
         """Get document details including text and chunks."""
-        import knowledge_base as kb_mod
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         doc = kb_mod.get_document_details(kb_id, doc_id)
         if not doc:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Document not found"})
         return doc
 
@@ -1681,12 +1796,13 @@ if __name__ == "__main__":
         filename: str
 
     @app.patch("/api/kb/{kb_id}/documents/{doc_id}")
-    async def rename_document(kb_id: str, doc_id: str, request: DocRenameRequest):
+    async def rename_document(kb_id: str, doc_id: str, payload: DocRenameRequest, request: Request):
         """Rename a document in a knowledge base."""
-        import knowledge_base as kb_mod
-        result = kb_mod.rename_document(kb_id, doc_id, request.filename)
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
+        result = kb_mod.rename_document(kb_id, doc_id, payload.filename)
         if not result:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Document not found"})
         return result
 
@@ -1694,19 +1810,22 @@ if __name__ == "__main__":
         text: str
 
     @app.put("/api/kb/{kb_id}/documents/{doc_id}")
-    async def update_document_text(kb_id: str, doc_id: str, request: DocUpdateRequest):
+    async def update_document_text(kb_id: str, doc_id: str, payload: DocUpdateRequest, request: Request):
         """Update a document's text, re-chunking and re-embedding."""
-        import knowledge_base as kb_mod
-        result = await kb_mod.update_document_text(kb_id, doc_id, request.text)
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
+        result = await kb_mod.update_document_text(kb_id, doc_id, payload.text)
         if not result:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Document not found"})
         return result
 
     @app.delete("/api/kb/{kb_id}/documents/{doc_id}")
-    async def delete_document(kb_id: str, doc_id: str):
+    async def delete_document(kb_id: str, doc_id: str, request: Request):
         """Delete a document from a knowledge base."""
-        import knowledge_base as kb_mod
+        tenant = _tenant_or_401(request)
+        if not _require_kb(kb_id, tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Knowledge base not found"})
         kb_mod.delete_document(kb_id, doc_id)
         return {"status": "deleted"}
 
@@ -1736,42 +1855,44 @@ if __name__ == "__main__":
         client_id: str = ""
 
     @app.post("/api/conversations")
-    async def save_conversation(request: ConversationSaveRequest):
-        """Save a conversation."""
-        import conversation_store as conv_mod
-        return conv_mod.save_conversation(request.model_dump())
+    async def save_conversation(payload: ConversationSaveRequest, request: Request):
+        """Save a conversation to this tenant."""
+        tenant = _tenant_or_401(request)
+        data = payload.model_dump()
+        data["tenant_id"] = tenant["id"]
+        return conv_mod.save_conversation(data)
 
     @app.get("/api/conversations")
     async def list_conversations(
+        request: Request,
         scenario: str | None = None,
         llm_provider: str | None = None,
         mode: str | None = None,
-        client_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ):
-        """List conversations with optional filters."""
-        import conversation_store as conv_mod
+        """List this tenant's conversations with optional filters."""
+        tenant = _tenant_or_401(request)
         return conv_mod.list_conversations(
             scenario=scenario, llm_provider=llm_provider,
-            mode=mode, client_id=client_id, limit=limit, offset=offset,
+            mode=mode, tenant_id=tenant["id"], limit=limit, offset=offset,
         )
 
     @app.get("/api/conversations/{conv_id}")
-    async def get_conversation(conv_id: str):
+    async def get_conversation(conv_id: str, request: Request):
         """Get a single conversation."""
-        import conversation_store as conv_mod
-        result = conv_mod.get_conversation(conv_id)
+        tenant = _tenant_or_401(request)
+        result = conv_mod.get_conversation(conv_id, tenant_id=tenant["id"])
         if not result:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Conversation not found"})
         return result
 
     @app.delete("/api/conversations/{conv_id}")
-    async def delete_conversation(conv_id: str):
+    async def delete_conversation(conv_id: str, request: Request):
         """Delete a conversation."""
-        import conversation_store as conv_mod
-        conv_mod.delete_conversation(conv_id)
+        tenant = _tenant_or_401(request)
+        if not conv_mod.delete_conversation(conv_id, tenant_id=tenant["id"]):
+            return JSONResponse(status_code=404, content={"error": "Conversation not found"})
         return {"status": "deleted"}
 
     if __name__ == "__main__":

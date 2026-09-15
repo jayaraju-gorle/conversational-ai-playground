@@ -1139,6 +1139,126 @@
     }
     .kb-overlay.open .kb-panel { transform: translateX(0); }
 
+    /* ── Auth gate ─────────────────────────────────────── */
+    .auth-overlay {
+      position: fixed; inset: 0;
+      z-index: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8, 10, 16, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    .auth-overlay[hidden] { display: none; }
+    .auth-card {
+      width: min(420px, calc(100vw - 2rem));
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.75rem 1.5rem 1.5rem;
+    }
+    .auth-card h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    .auth-card .auth-lead {
+      color: var(--text-2);
+      font-size: 0.85rem;
+      line-height: 1.45;
+      margin-bottom: 1.25rem;
+    }
+    .auth-tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 0.2rem;
+    }
+    .auth-tabs button {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-2);
+      padding: 0.45rem 0.5rem;
+      border-radius: 6px;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .auth-tabs button.active {
+      background: var(--surface-3);
+      color: var(--text);
+    }
+    .auth-card label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 0.3rem;
+    }
+    .auth-card input {
+      width: 100%;
+      margin-bottom: 0.75rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .auth-card input:focus { border-color: var(--primary); }
+    .auth-error {
+      color: var(--red);
+      font-size: 0.8rem;
+      min-height: 1.1em;
+      margin-bottom: 0.6rem;
+    }
+    .auth-submit {
+      width: 100%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.88rem;
+      padding: 0.65rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .auth-submit:disabled { opacity: 0.6; cursor: default; }
+    .account-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-right: 0.5rem;
+      max-width: 280px;
+    }
+    .account-chip .org-name {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .btn-signout {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-2);
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.3rem 0.55rem;
+      border-radius: 7px;
+      cursor: pointer;
+    }
+    .btn-signout:hover { color: var(--text); border-color: var(--border-hover); }
+    body.operator-mode .lab-only { display: none !important; }
+
     .kb-panel-header {
       display: flex;
       align-items: center;
@@ -1548,6 +1668,36 @@
 <audio id="botAudio" autoplay style="display:none;"></audio>
 <div id="toasts"></div>
 
+<div class="auth-overlay" id="authOverlay">
+  <form class="auth-card" id="authForm" autocomplete="on">
+    <h1>Conversational AI Playground</h1>
+    <p class="auth-lead">Sign in to your organisation workspace. Knowledge bases, prompts, and conversation history stay isolated per tenant.</p>
+    <div class="auth-tabs">
+      <button type="button" data-auth-tab="login" class="active">Sign in</button>
+      <button type="button" data-auth-tab="register">Create workspace</button>
+    </div>
+    <div id="authRegisterFields" hidden>
+      <label for="authOrg">Organisation</label>
+      <input id="authOrg" name="organization" type="text" placeholder="Sunrise Clinic" autocomplete="organization">
+    </div>
+    <label for="authEmail">Work email</label>
+    <input id="authEmail" name="email" type="email" required placeholder="you@company.in" autocomplete="username">
+    <label for="authPassword">Password</label>
+    <input id="authPassword" name="password" type="password" required minlength="8" placeholder="At least 8 characters" autocomplete="current-password">
+    <div class="auth-error" id="authError"></div>
+    <button class="auth-submit" type="submit" id="authSubmit">Sign in</button>
+    <div class="demo-auth-box" style="margin-top:1rem; padding:0.75rem; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); text-align:center;">
+      <div style="font-size:0.75rem; color:var(--text-2); margin-bottom:0.3rem;">🚀 Exploring or Testing? Use Demo Tenant Credentials:</div>
+      <div style="font-size:0.8rem; font-family:var(--font-mono); color:var(--text); margin-bottom:0.5rem;">
+        <strong>demo@playground.ai</strong> &nbsp;•&nbsp; <strong>demo12345</strong>
+      </div>
+      <button type="button" class="btn-kb" id="btnFillDemo" style="width:100%; justify-content:center; padding:0.4rem; font-weight:600; color:var(--primary); border-color:var(--primary);">
+        ⚡ Auto-Sign In with Demo Account
+      </button>
+    </div>
+  </form>
+</div>
+
 <!-- KB Management Panel (slide-over) -->
 <div class="kb-overlay" id="kbOverlay">
   <div class="kb-panel">
@@ -1650,18 +1800,28 @@
       <span>Playground</span>
     </div>
 
+    <div class="account-chip" id="accountChip" hidden>
+      <span class="org-name" id="accountOrg"></span>
+      <button type="button" class="btn-signout" id="btnLogout">Sign out</button>
+    </div>
+
     <!-- View mode -->
-    <div class="pill-toggle" id="viewToggle">
+    <div class="pill-toggle lab-only" id="viewToggle">
       <button data-view="solo" class="active">Solo</button>
       <button data-view="split">Compare</button>
     </div>
 
-    <div class="toolbar-sep"></div>
+    <div class="toolbar-sep lab-only"></div>
 
     <!-- Currency -->
     <div class="pill-toggle" id="currencyToggle">
       <button data-currency="USD" class="active">USD</button>
       <button data-currency="INR">INR</button>
+    </div>
+
+    <div class="pill-toggle" id="labToggle" title="Lab unlocks provider compare and stack pickers">
+      <button data-lab="off" class="active">Operator</button>
+      <button data-lab="on">Lab</button>
     </div>
 
     <div class="toolbar-spacer"></div>
@@ -1691,12 +1851,12 @@
   <div class="config-bar solo-only" id="configBar">
     <!-- Scenario -->
     <div class="selector-group">
-      <span class="selector-label">Scenario <span class="info-icon" data-tooltip="Preset industry domain (Hotel, Hospital, Bank, Restaurant, E-Commerce) controlling system prompt rules.">?</span></span>
+      <span class="selector-label">Scenario <span class="info-icon" data-tooltip="Preset industry domain (Hospital, Bank, E-Commerce, General) controlling system prompt rules.">?</span></span>
       <div class="selector-pill"><select id="selScenario"></select></div>
     </div>
 
     <!-- LLM -->
-    <div class="selector-group">
+    <div class="selector-group lab-only">
       <span class="selector-label">LLM <span class="info-icon" data-tooltip="Language Model provider & model architecture for text generation & reasoning.">?</span></span>
       <div class="selector-pill">
         <select id="selLLM">
@@ -1709,7 +1869,7 @@
     </div>
 
     <!-- STT -->
-    <div class="selector-group">
+    <div class="selector-group lab-only">
       <span class="selector-label">STT <span class="info-icon" data-tooltip="Speech-to-Text provider for real-time voice transcription (Deepgram, Whisper, AssemblyAI).">?</span></span>
       <div class="selector-pill">
         <select id="selSTT">
@@ -1720,7 +1880,7 @@
     </div>
 
     <!-- TTS -->
-    <div class="selector-group">
+    <div class="selector-group lab-only">
       <span class="selector-label">TTS <span class="info-icon" data-tooltip="Text-to-Speech provider for natural voice synthesis (Deepgram, Cartesia, ElevenLabs).">?</span></span>
       <div class="selector-pill">
         <select id="selTTS">
@@ -1731,7 +1891,7 @@
     </div>
 
     <!-- Voice -->
-    <div class="selector-group">
+    <div class="selector-group lab-only">
       <span class="selector-label">Voice <span class="info-icon" data-tooltip="Voice actor timbre, gender, and acoustic style for spoken output.">?</span></span>
       <div class="selector-pill">
         <select id="selVoice">
@@ -1770,9 +1930,9 @@
       </div>
     </div>
 
-    <!-- Reservation API -->
-    <div class="selector-group">
-      <span class="selector-label">Reservations <span class="info-icon" data-tooltip="Connect live reservation APIs (OpenTable, Resy, Calendly, Booking.com) or plug your custom backend to power the AI agent with live bookings.">?</span></span>
+    <!-- Scheduling / Appointments API -->
+    <div class="selector-group lab-only">
+      <span class="selector-label">Scheduling <span class="info-icon" data-tooltip="Connect live scheduling APIs (Calendly, Cal.com, Acuity) or plug your custom backend to power the AI agent with live appointments.">?</span></span>
       <div class="selector-pill"><select id="selReservation">
         <optgroup label="Local Simulation">
           <option value="dummy">🔧 Built-in Dummy Engine (Local Mock)</option>
@@ -1780,19 +1940,10 @@
         <optgroup label="Custom Backend Integration">
           <option value="custom">🔌 Custom REST / Webhook API (Plug &amp; Play)</option>
         </optgroup>
-        <optgroup label="Restaurant &amp; Dining APIs">
-          <option value="opentable">🌐 OpenTable API — Ready to Connect</option>
-          <option value="resy">🍷 Resy OS API — Ready to Connect</option>
-          <option value="sevenrooms">🍴 SevenRooms API — Ready to Connect</option>
-        </optgroup>
         <optgroup label="Scheduling &amp; Appointment APIs">
           <option value="calendly">📅 Calendly v2 API — Ready to Connect</option>
           <option value="calcom">📆 Cal.com API — Ready to Connect</option>
           <option value="acuity">🏥 Acuity Scheduling API — Ready to Connect</option>
-        </optgroup>
-        <optgroup label="Hotel &amp; Accommodation APIs">
-          <option value="booking">🏨 Booking.com API — Ready to Connect</option>
-          <option value="amadeus">✈️ Amadeus Travel API — Ready to Connect</option>
         </optgroup>
         <optgroup label="Events &amp; Ticketing APIs">
           <option value="eventbrite">🎟️ Eventbrite API — Ready to Connect</option>
@@ -1986,7 +2137,7 @@
         <div class="config-item"><span class="ck">Voice</span><span class="cv" id="cfgVoice">—</span></div>
         <div class="config-item"><span class="ck">Language</span><span class="cv" id="cfgLanguage">—</span></div>
         <div class="config-item"><span class="ck">KB</span><span class="cv" id="cfgKB">—</span></div>
-        <div class="config-item"><span class="ck">Reservation API</span><span class="cv" id="cfgReservation">—</span></div>
+        <div class="config-item"><span class="ck">Scheduling API</span><span class="cv" id="cfgReservation">—</span></div>
       </div>
 
       <!-- Session -->
@@ -2035,6 +2186,150 @@
       endpoint: "/start",
       requestData: { body: configData }
     });
+  }
+
+  let currentTenant = null;
+  let authMode = 'login';
+
+  const authOverlay = document.getElementById('authOverlay');
+  const authForm = document.getElementById('authForm');
+  const authError = document.getElementById('authError');
+  const authSubmit = document.getElementById('authSubmit');
+  const authRegisterFields = document.getElementById('authRegisterFields');
+  const accountChip = document.getElementById('accountChip');
+  const accountOrg = document.getElementById('accountOrg');
+  const labToggle = document.getElementById('labToggle');
+
+  function showAuth() {
+    currentTenant = null;
+    authOverlay.hidden = false;
+    accountChip.hidden = true;
+  }
+
+  function applyTenant(tenant) {
+    currentTenant = tenant;
+    authOverlay.hidden = true;
+    accountChip.hidden = false;
+    accountOrg.textContent = tenant.org_name || tenant.email;
+    accountOrg.title = tenant.email;
+    const labOn = !!tenant.lab_enabled;
+    document.body.classList.toggle('operator-mode', !labOn);
+    labToggle.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('active', labOn ? b.dataset.lab === 'on' : b.dataset.lab === 'off'));
+    if (!labOn && typeof setView === 'function') setView('solo');
+    const chk = document.getElementById('chkCustomPrompt');
+    const custom = document.getElementById('customPromptInput');
+    const temp = document.getElementById('tempInput');
+    const maxTok = document.getElementById('maxTokensInput');
+    const topK = document.getElementById('topKInput');
+    if (chk) chk.checked = !!tenant.use_custom_prompt;
+    if (custom && tenant.custom_system_prompt) custom.value = tenant.custom_system_prompt;
+    if (temp && tenant.temperature != null) temp.value = tenant.temperature;
+    if (maxTok && tenant.max_tokens != null) maxTok.value = tenant.max_tokens;
+    if (topK && tenant.top_k != null) topK.value = tenant.top_k;
+  }
+
+  function applyTenantDefaults() {
+    if (!currentTenant) return;
+    if (currentTenant.default_language) selLanguage.value = currentTenant.default_language;
+    if (currentTenant.default_llm) selLLM.value = currentTenant.default_llm;
+    if (currentTenant.default_stt) selSTT.value = currentTenant.default_stt;
+    if (currentTenant.default_tts) selTTS.value = currentTenant.default_tts;
+    if (currentTenant.default_voice) selVoice.value = currentTenant.default_voice;
+  }
+
+  authOverlay.querySelectorAll('[data-auth-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      authMode = btn.dataset.authTab;
+      authOverlay.querySelectorAll('[data-auth-tab]').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      authRegisterFields.hidden = authMode !== 'register';
+      authSubmit.textContent = authMode === 'register' ? 'Create workspace' : 'Sign in';
+      document.getElementById('authPassword').autocomplete =
+        authMode === 'register' ? 'new-password' : 'current-password';
+      authError.textContent = '';
+    });
+  });
+
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    authError.textContent = '';
+    authSubmit.disabled = true;
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const org_name = document.getElementById('authOrg').value.trim();
+    try {
+      const url = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const body = authMode === 'register' ? { email, password, org_name } : { email, password };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        authError.textContent = data.error || data.detail || 'Could not sign in';
+        return;
+      }
+      applyTenant(data.tenant);
+      await loadConfig();
+    } catch (err) {
+      authError.textContent = err.message || 'Network error';
+    } finally {
+      authSubmit.disabled = false;
+    }
+  });
+
+  const btnFillDemo = document.getElementById('btnFillDemo');
+  if (btnFillDemo) {
+    btnFillDemo.addEventListener('click', () => {
+      const loginTabBtn = authOverlay.querySelector('[data-auth-tab="login"]');
+      if (loginTabBtn) loginTabBtn.click();
+      document.getElementById('authEmail').value = 'demo@playground.ai';
+      document.getElementById('authPassword').value = 'demo12345';
+      authForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+  }
+
+  document.getElementById('btnLogout').addEventListener('click', async () => {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+    showAuth();
+  });
+
+  labToggle.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const labOn = btn.dataset.lab === 'on';
+      document.body.classList.toggle('operator-mode', !labOn);
+      labToggle.querySelectorAll('button').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      if (!labOn) setView('solo');
+      try {
+        const res = await fetch('/api/auth/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lab_enabled: labOn }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.tenant) currentTenant = { ...currentTenant, ...data.tenant };
+        }
+      } catch (_) {}
+    });
+  });
+
+  async function bootSession() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) {
+        showAuth();
+        return;
+      }
+      const data = await res.json();
+      applyTenant(data.tenant);
+      await loadConfig();
+    } catch (_) {
+      showAuth();
+    }
   }
 
   // ── DOM refs ───────────────────────────────────────
@@ -2205,8 +2500,6 @@
     languages: [{ code: 'en-IN', label: 'English (India)' }],
     scenarios: [
       { value: 'generic', label: 'General Assistant' },
-      { value: 'restaurant', label: 'Restaurant — Table Reservation' },
-      { value: 'hotel', label: 'Hotel — Room Booking' },
       { value: 'hospital', label: 'Hospital — Appointment Booking' },
       { value: 'bank', label: 'Bank — Customer Support' },
       { value: 'ecommerce', label: 'E-commerce — Order Support' },
@@ -2444,21 +2737,27 @@
   async function loadConfig() {
     try {
       const res = await fetch('/api/config');
+      if (res.status === 401) {
+        showAuth();
+        return;
+      }
       if (res.ok) CONFIG = await res.json();
     } catch (e) {
       console.warn('Could not load /api/config, using defaults', e);
     }
+    if (CONFIG.tenant) applyTenant(CONFIG.tenant);
     fillSelect(selScenario, CONFIG.scenarios || []);
     fillSelect(selLLM, CONFIG.providers.llm, CONFIG.default_llm);
     fillSelect(selSTT, CONFIG.providers.stt, CONFIG.default_stt);
     fillSelect(selTTS, CONFIG.providers.tts, CONFIG.default_tts);
+    applyTenantDefaults();
     fillVoices();
     fillLanguages();
     fillKBSelector();
     updateSoloRealtimeUI();
     syncConfigDisplay();
     renderMetrics();
-    panes.forEach(p => p.fillOptions());
+    if (typeof panes !== 'undefined') panes.forEach(p => p.fillOptions());
   }
 
   function fillKBSelector() {
@@ -2972,6 +3271,8 @@
     setConnectState('connecting');
     addEvent('transport', 'Initiating WebRTC connection…');
 
+    const customOn = document.getElementById('chkCustomPrompt')?.checked;
+    const customPrompt = document.getElementById('customPromptInput')?.value?.trim();
     const configData = {
       scenario: selScenario.value || 'generic',
       llm: selLLM.value || 'google',
@@ -2979,6 +3280,8 @@
       tts: selTTS.value || 'sarvam',
       voice: selVoice.value || 'aditya',
       language: selLanguage.value || 'en-IN',
+      persona: document.getElementById('scenarioPersonaInput')?.value?.trim() || '',
+      custom_system_prompt: customOn && customPrompt ? customPrompt : '',
     };
 
     syncConfigDisplay();
@@ -3260,6 +3563,10 @@
           language: selLanguage.value,
           scenario: selScenario.value,
           knowledge_base_ids: selKB.value ? [selKB.value] : [],
+          custom_system_prompt: (document.getElementById('chkCustomPrompt')?.checked ? document.getElementById('customPromptInput')?.value : null),
+          temperature: parseFloat(document.getElementById('tempInput')?.value || '0.7'),
+          max_tokens: parseInt(document.getElementById('maxTokensInput')?.value || '1024', 10),
+          top_k: parseInt(document.getElementById('topKInput')?.value || '5', 10),
         })
       });
 
@@ -3828,7 +4135,7 @@
     btn.addEventListener('click', () => setView(btn.dataset.view)));
 
   // ── Init ───────────────────────────────────────────
-  loadConfig();
+  bootSession();
 
   // ═══════════════════════════════════════════════════
   // Knowledge Base Management Panel
@@ -4266,7 +4573,6 @@
 
   async function loadHistory() {
     const params = new URLSearchParams();
-    params.set('client_id', browserClientId);
     if (historyFilterScenario.value) params.set('scenario', historyFilterScenario.value);
     if (historyFilterLLM.value) params.set('llm_provider', historyFilterLLM.value);
 

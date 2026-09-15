@@ -44,8 +44,9 @@ def save_conversation(data: dict) -> dict:
                (id, title, scenario, llm_provider, llm_model, stt_provider,
                 tts_provider, voice, language, knowledge_base_ids, mode,
                 total_cost_usd, total_tokens, prompt_tokens, completion_tokens,
-                avg_latency_ms, duration_seconds, messages, config_snapshot, client_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                avg_latency_ms, duration_seconds, messages, config_snapshot, client_id,
+                tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 conv_id,
                 title,
@@ -67,10 +68,13 @@ def save_conversation(data: dict) -> dict:
                 json.dumps(data.get("messages", [])),
                 json.dumps(data.get("config_snapshot", {})),
                 data.get("client_id", ""),
+                data.get("tenant_id", ""),
             ),
         )
         conn.commit()
-        logger.info(f"Saved conversation '{title}' (id={conv_id}, client_id={data.get('client_id', '')})")
+        logger.info(
+            f"Saved conversation '{title}' (id={conv_id}, tenant_id={data.get('tenant_id', '')})"
+        )
         return {"id": conv_id, "title": title}
     finally:
         conn.close()
@@ -81,18 +85,25 @@ def list_conversations(
     llm_provider: str | None = None,
     mode: str | None = None,
     client_id: str | None = None,
+    tenant_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """List conversations with optional filters and pagination.
+    """List conversations for a tenant with optional filters and pagination.
 
     Returns {conversations: [...], total: int}.
     """
+    if not tenant_id:
+        return {"conversations": [], "total": 0}
+
     conn = get_connection()
     try:
         conditions = []
         params: list = []
 
+        if tenant_id:
+            conditions.append("tenant_id = ?")
+            params.append(tenant_id)
         if client_id:
             conditions.append("client_id = ?")
             params.append(client_id)
@@ -137,13 +148,19 @@ def list_conversations(
         conn.close()
 
 
-def get_conversation(conv_id: str) -> dict | None:
+def get_conversation(conv_id: str, tenant_id: str | None = None) -> dict | None:
     """Get a single conversation with full messages."""
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT * FROM conversations WHERE id = ?", (conv_id,)
-        ).fetchone()
+        if tenant_id:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE id = ? AND tenant_id = ?",
+                (conv_id, tenant_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conv_id,)
+            ).fetchone()
         if not row:
             return None
         d = dict(row)
@@ -155,11 +172,17 @@ def get_conversation(conv_id: str) -> dict | None:
         conn.close()
 
 
-def delete_conversation(conv_id: str) -> bool:
+def delete_conversation(conv_id: str, tenant_id: str | None = None) -> bool:
     """Delete a conversation."""
     conn = get_connection()
     try:
-        cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+        if tenant_id:
+            cursor = conn.execute(
+                "DELETE FROM conversations WHERE id = ? AND tenant_id = ?",
+                (conv_id, tenant_id),
+            )
+        else:
+            cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
         conn.commit()
         deleted = cursor.rowcount > 0
         if deleted:

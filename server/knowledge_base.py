@@ -29,26 +29,26 @@ EMBEDDING_DIMS = 768      # text-embedding-004 output dimension
 # Knowledge Base CRUD
 # ══════════════════════════════════════════════════════════════════════
 
-def create_kb(name: str, description: str = "") -> dict:
-    """Create a new knowledge base."""
+def create_kb(name: str, description: str = "", tenant_id: str = "") -> dict:
+    """Create a new knowledge base owned by a tenant."""
     kb_id = uuid.uuid4().hex[:12]
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO knowledge_bases (id, name, description) VALUES (?, ?, ?)",
-            (kb_id, name, description),
+            "INSERT INTO knowledge_bases (id, tenant_id, name, description) VALUES (?, ?, ?, ?)",
+            (kb_id, tenant_id, name, description),
         )
         conn.commit()
         kb_dir = KB_FILES_DIR / kb_id
         kb_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created knowledge base '{name}' (id={kb_id})")
-        return {"id": kb_id, "name": name, "description": description}
+        logger.info(f"Created knowledge base '{name}' (id={kb_id}, tenant={tenant_id})")
+        return {"id": kb_id, "tenant_id": tenant_id, "name": name, "description": description}
     finally:
         conn.close()
 
 
-def list_kbs() -> list[dict]:
-    """List all knowledge bases with document counts."""
+def list_kbs(tenant_id: str) -> list[dict]:
+    """List knowledge bases for one tenant with document counts."""
     conn = get_connection()
     try:
         rows = conn.execute("""
@@ -57,120 +57,30 @@ def list_kbs() -> list[dict]:
                    COALESCE(SUM(d.chunk_count), 0) AS total_chunks
             FROM knowledge_bases kb
             LEFT JOIN documents d ON d.kb_id = kb.id AND d.status = 'ready'
+            WHERE kb.tenant_id = ?
             GROUP BY kb.id
             ORDER BY kb.created_at DESC
-        """).fetchall()
-        kbs = [dict(r) for r in rows]
-        if not kbs:
-            # Auto-seed sample KBs if database is empty
-            seed_sample_kbs()
-            rows = conn.execute("""
-                SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
-                       COUNT(d.id) AS doc_count,
-                       COALESCE(SUM(d.chunk_count), 0) AS total_chunks
-                FROM knowledge_bases kb
-                LEFT JOIN documents d ON d.kb_id = kb.id AND d.status = 'ready'
-                GROUP BY kb.id
-                ORDER BY kb.created_at DESC
-            """).fetchall()
-            kbs = [dict(r) for r in rows]
-        return kbs
+        """, (tenant_id,)).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def seed_sample_kbs():
-    """Seed sample knowledge bases for all playground scenarios if they don't already exist."""
+def seed_sample_kbs(tenant_id: str):
+    """Seed sample knowledge bases for a tenant if they don't already have any."""
+    if not tenant_id:
+        return
     conn = get_connection()
     try:
-        count = conn.execute("SELECT count(*) FROM knowledge_bases").fetchone()[0]
+        count = conn.execute(
+            "SELECT count(*) FROM knowledge_bases WHERE tenant_id = ?", (tenant_id,)
+        ).fetchone()[0]
         if count > 0:
             return
     finally:
         conn.close()
 
     samples = [
-        {
-            "name": "Spice Garden Restaurant",
-            "desc": "Menu, opening hours, prices, dietary options, address, and policies for Spice Garden Bistro.",
-            "filename": "spice_garden_menu.md",
-            "content": """# Spice Garden Restaurant & Bistro — Information & Menu
-## 📍 General Information
-- **Restaurant Name**: Spice Garden Restaurant & Bistro
-- **Cuisine**: Modern Indian & Fusion
-- **Address**: 42 Culinary Avenue, Gourmet District, Bangalore 560001
-- **Phone**: +91 80 4567 8900
-- **Email**: reservations@spicegardenbistro.com
-- **Website**: www.spicegardenbistro.com
-
-## ⏰ Opening Hours
-- **Monday – Thursday**: 12:00 PM – 3:30 PM (Lunch), 7:00 PM – 11:00 PM (Dinner)
-- **Friday – Sunday**: 12:00 PM – 11:30 PM (Continuous Dining)
-- **Happy Hours**: Mon–Fri 4:00 PM – 7:00 PM (50% off select cocktails & craft beers)
-
-## 🥗 Starters & Appetizers
-1. **Truffle Malai Paneer Tikka** – ₹420
-   - Creamy cottage cheese marinated in cardamom, white pepper, and black truffle oil, charcoal-grilled in tandoor. *(Gluten-Free, Vegetarian)*
-2. **Kolkata Spiced Prawn Chettinad Tacos** – ₹540
-   - Crispy mini parathas filled with pan-seared prawns, roasted coconut spices, and curry leaf aioli.
-3. **Gunpowder Jackfruit Sliders** – ₹380
-   - Pulled tender jackfruit tossed in Andhra gunpowder ghee, served in toasted brioche buns. *(Vegetarian)*
-
-## 🍲 Main Course
-1. **Old Delhi Butter Chicken (Classic)** – ₹580
-   - Overnight marinated chicken tikka simmered in a velvet tomato, cashew, and fenugreek gravy. Served with garlic naan.
-2. **Nizamabad Mutton Dum Biryani** – ₹690
-   - Fragrant long-grain basmati rice cooked on slow dum with tender goat meat, saffron, and aromatic spices. Served with burani raita.
-3. **Kerala Raw Mango & Fish Curry** – ₹620
-   - Kingfish simmered in a tangy coconut milk broth with raw mango slices and tempered mustard seeds. *(Gluten-Free)*
-
-## 🍹 Signature Cocktails & Beverages
-1. **Deccan Sunset** – ₹450
-   - Single malt whiskey infused with star anise, jaggery syrup, and orange bitters.
-2. **Masala Chai Martini** – ₹400
-   - Vodka, freshly brewed spiced Assam tea, Kahlua, and a dash of cardamom.
-3. **Kachha Aam Cooler (Mocktail)** – ₹220
-   - Raw green mango pulp, roasted cumin, mint leaves, and sparkling soda.
-
-## 📋 Policies & Information
-- **Reservations**: Recommended on weekends. Tables held for up to 15 minutes.
-- **Dietary Options**: Vegan, Jain, and Gluten-Free dishes clearly marked on menu.
-- **Valet Parking**: Complimentary valet parking available at restaurant entrance.
-- **Private Dining**: Hall available for private events up to 25 guests."""
-        },
-        {
-            "name": "Grand Meridian Hotel & Resort",
-            "desc": "Room rates, check-in policies, amenities, dining, spa, and shuttle service details.",
-            "filename": "grand_meridian_guide.md",
-            "content": """# Grand Meridian Hotel & Resort — Guest Directory
-
-## 🏨 Hotel Overview
-- **Hotel Name**: The Grand Meridian Hotel & Resort
-- **Address**: 100 Ocean Drive, Marine District, Mumbai 400021
-- **Phone**: +91 22 6789 0000
-- **Email**: reservations@grandmeridianhotel.com
-- **Website**: www.grandmeridianhotel.com
-
-## 🛌 Room Types & Rates (Breakfast Included)
-1. **Deluxe Room** — ₹6,500 ($79) / night
-   - 350 sq.ft, King or Twin beds, City view, Smart TV, Work desk, Marble bathroom.
-2. **Executive Suite** — ₹11,000 ($132) / night
-   - 650 sq.ft, Sea view, Living room, King bed, Nespresso machine, Executive Lounge access.
-3. **Family Room** — ₹9,000 ($108) / night
-   - 500 sq.ft, Two Queen beds, Connecting room option, Kid-friendly amenities.
-
-## ⏰ Check-In & Check-Out
-- **Check-In Time**: 2:00 PM
-- **Check-Out Time**: 11:00 AM
-- **Early Check-In / Late Check-Out**: Subject to availability (Complimentary up to 2 hours for Gold members).
-
-## 🏊 Amenities & Services
-- **Wi-Fi**: High-speed complimentary Wi-Fi across hotel premises.
-- **Swimming Pool & Fitness Center**: Open daily 6:00 AM – 10:00 PM (Complimentary for guests).
-- **Lotus Spa**: Open daily 9:00 AM – 9:00 PM (Aromatherapy, Ayurvedic massages, facial treatments).
-- **Airport Shuttle**: Available 24/7 upon request (₹1,200 / $15 per vehicle per trip).
-- **Dining**: Meridian All-Day Dining Restaurant (6:30 AM – 11:00 PM) & Sky Lounge Bar (5:00 PM – 1:00 AM)."""
-        },
         {
             "name": "Sunrise Multi-Speciality Hospital",
             "desc": "Doctor consultations, department specialities, insurance coverage, emergency, and visiting hours.",
@@ -266,7 +176,7 @@ def seed_sample_kbs():
 
     for s in samples:
         try:
-            kb = create_kb(s["name"], s["desc"])
+            kb = create_kb(s["name"], s["desc"], tenant_id=tenant_id)
             kb_id = kb["id"]
             doc_id = uuid.uuid4().hex[:12]
             filename = s["filename"]
@@ -314,20 +224,28 @@ def seed_sample_kbs():
             logger.warning(f"Failed to seed sample KB '{s['name']}': {e}")
 
 
-def get_kb(kb_id: str) -> dict | None:
-    """Get a single knowledge base."""
+def get_kb(kb_id: str, tenant_id: str | None = None) -> dict | None:
+    """Get a single knowledge base, optionally asserting tenant ownership."""
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT * FROM knowledge_bases WHERE id = ?", (kb_id,)
-        ).fetchone()
+        if tenant_id is None:
+            row = conn.execute(
+                "SELECT * FROM knowledge_bases WHERE id = ?", (kb_id,)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM knowledge_bases WHERE id = ? AND tenant_id = ?",
+                (kb_id, tenant_id),
+            ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def update_kb(kb_id: str, name: str, description: str = "") -> dict | None:
+def update_kb(kb_id: str, name: str, description: str = "", tenant_id: str | None = None) -> dict | None:
     """Update a knowledge base's name and description."""
+    if tenant_id is not None and not get_kb(kb_id, tenant_id):
+        return None
     conn = get_connection()
     try:
         conn.execute(
@@ -335,13 +253,15 @@ def update_kb(kb_id: str, name: str, description: str = "") -> dict | None:
             (name, description, kb_id),
         )
         conn.commit()
-        return get_kb(kb_id)
+        return get_kb(kb_id, tenant_id)
     finally:
         conn.close()
 
 
-def delete_kb(kb_id: str) -> bool:
+def delete_kb(kb_id: str, tenant_id: str | None = None) -> bool:
     """Delete a knowledge base and all its documents/chunks."""
+    if tenant_id is not None and not get_kb(kb_id, tenant_id):
+        return False
     conn = get_connection()
     try:
         conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
@@ -446,14 +366,18 @@ async def update_document_text(kb_id: str, doc_id: str, new_text: str) -> dict |
         conn.close()
 
 
-def duplicate_kb(kb_id: str) -> dict | None:
+def duplicate_kb(kb_id: str, tenant_id: str | None = None) -> dict | None:
     """Duplicate/clone an existing knowledge base and all its documents and chunks."""
-    source_kb = get_kb(kb_id)
+    source_kb = get_kb(kb_id, tenant_id)
     if not source_kb:
         return None
 
     new_name = f"{source_kb['name']} (Copy)"
-    new_kb = create_kb(new_name, source_kb.get("description", ""))
+    new_kb = create_kb(
+        new_name,
+        source_kb.get("description", ""),
+        tenant_id=tenant_id or source_kb.get("tenant_id") or "",
+    )
     new_kb_id = new_kb["id"]
 
     conn = get_connection()
@@ -781,7 +705,9 @@ async def upload_document(kb_id: str, filename: str, content: bytes) -> dict:
 # RAG Retrieval
 # ══════════════════════════════════════════════════════════════════════
 
-async def retrieve(kb_ids: list[str], query: str, top_k: int = 5) -> list[dict]:
+async def retrieve(
+    kb_ids: list[str], query: str, top_k: int = 5, tenant_id: str | None = None
+) -> list[dict]:
     """Retrieve the most relevant chunks from the specified knowledge bases.
 
     Embeds the query, then searches all chunks in the given KBs by cosine
@@ -794,13 +720,19 @@ async def retrieve(kb_ids: list[str], query: str, top_k: int = 5) -> list[dict]:
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in kb_ids)
+        tenant_sql = ""
+        params: list = list(kb_ids)
+        if tenant_id:
+            tenant_sql = " AND kb.tenant_id = ?"
+            params.append(tenant_id)
         rows = conn.execute(
             f"""SELECT c.id, c.text, c.embedding, c.kb_id, d.filename
                 FROM chunks c
                 JOIN documents d ON d.id = c.doc_id
+                JOIN knowledge_bases kb ON kb.id = c.kb_id
                 WHERE c.kb_id IN ({placeholders})
-                  AND d.status = 'ready'""",
-            kb_ids,
+                  AND d.status = 'ready'{tenant_sql}""",
+            params,
         ).fetchall()
     finally:
         conn.close()
@@ -859,7 +791,7 @@ def build_rag_context(passages: list[dict]) -> str:
         "You MUST answer the user's questions using the facts provided in the Knowledge Base passages below.",
         "When answering questions about contact details, email, phone number, address, operating hours, menu, items, prices, or policies, "
         "rely STRICTLY on the Knowledge Base passages provided here.",
-        "If a default scenario persona (such as hotel, hospital, or bank) conflicts with the Knowledge Base, "
+        "If a default scenario persona (such as hospital, bank, or e-commerce) conflicts with the Knowledge Base, "
         "the Knowledge Base information ALWAYS takes priority.",
         "",
     ]

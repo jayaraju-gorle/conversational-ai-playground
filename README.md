@@ -1,12 +1,12 @@
 # Conversational AI Playground
 
-A self-hosted playground that helps businesses evaluate **AI-driven sales and support agents** before committing to a stack. Try a hospital appointment-booking bot, a bank support agent, an e-commerce order assistant, a restaurant table reservation agent, a hotel room booking assistant, or a general assistant — over **live voice** (WebRTC cascade or native Speech-to-Speech) or **direct text chat** — while switching every layer of the stack and observing real cost, latency, and token metrics.
+A self-hosted playground that helps businesses evaluate **AI-driven sales and support agents** before committing to a stack. Try a hospital appointment-booking bot, a bank support agent, an e-commerce order assistant, or a general assistant — over **live voice** (WebRTC cascade or native Speech-to-Speech) or **direct text chat** — while switching every layer of the stack and observing real cost, latency, and token metrics.
 
 Built on [Pipecat](https://github.com/pipecat-ai/pipecat) (cascade pipeline: STT → LLM → TTS, or native Speech-to-Speech) with a single-file web UI.
 
 ## Features
 
-- **6 Scenario Templates** — General Assistant, Hospital (appointment booking), Bank (customer support), E-commerce (order support), Restaurant (table reservation), Hotel (room booking). Each configures the agent's persona, system instructions, and sample user utterances.
+- **Tenant workspaces** — email/password sign-in; each organisation has isolated knowledge bases, scenario prompts, and conversation history. Operator mode hides stack pickers; Lab mode restores compare and provider switching.
 - **Swappable Providers & Stack Layers** — mix and match at session start:
   - **LLM**:
     - *Direct APIs*: Gemini 3.5 Flash, Gemini 3.5 Flash-Lite, GPT-4.1, GPT-5.4, Sarvam 30B, Sarvam 105B, Claude Opus 4.8, Claude Sonnet 5, Claude Haiku 4.5
@@ -67,7 +67,7 @@ Built on [Pipecat](https://github.com/pipecat-ai/pipecat) (cascade pipeline: STT
    uv run bot.py
    ```
 
-   Open http://localhost:7860
+   Open http://localhost:7860 and explore using the built-in demo credentials (`demo@playground.ai` / `demo12345`), or create a new workspace (email + password). Each account gets its own knowledge bases and history.
 
 5. **Headless Evaluation**:
 
@@ -105,7 +105,12 @@ conversational-ai-playground/
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/` | `GET` | Playground Web UI |
+| `/` | `GET` | Playground Web UI (sign-in required for data APIs) |
+| `/api/auth/register` | `POST` | Create a tenant workspace (email, password, org_name) |
+| `/api/auth/login` | `POST` | Sign in (sets `pg_session` cookie) |
+| `/api/auth/logout` | `POST` | Clear session |
+| `/api/auth/me` | `GET` | Current tenant + agent settings |
+| `/api/auth/settings` | `PATCH` | Update org defaults, Lab mode, prompt settings |
 | `/api/config` | `GET` | Dynamic provider catalog, voices, languages, scenarios, pricing, live FX rates, and ICE/TURN servers |
 | `/api/chat` | `POST` | Direct text chat endpoint (returns assistant message, token usage, latency, and model name) |
 | `/api/models/sync` | `GET` | Diffs hand-curated provider catalog against live provider model endpoints (Groq, Anthropic, Gemini, OpenAI, Azure) |
